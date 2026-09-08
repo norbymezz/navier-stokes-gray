@@ -330,6 +330,35 @@ The first executable target is deliberately modest:
 
 Once that is verified, D2/D3 and Gray-controlled transformations can be added without changing the validation foundation.
 
+## 13. Validation and provenance
+
+We are deliberately building from published problems before introducing project-specific modifications.
+
+The current validation ladder is documented in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md), including:
+
+- Taylor–Green exact periodic flow;
+- Ghia lid-driven cavity;
+- low-Re journal-bearing/reversibility studies;
+- Kolmogorov periodic flow;
+- later 3-D periodic benchmarks.
+
+Original papers, DOI links, stable benchmark pages and provenance notes are collected in [`docs/REFERENCES.md`](docs/REFERENCES.md).
+
+No benchmark number should appear in tests without its source and convention being documented.
+
+## 14. Code-comment policy
+
+Code comments are part of the scientific record of the project.
+
+They should explain:
+
+- why a non-obvious numerical operation is needed;
+- which physical assumption or boundary condition it represents;
+- what invariant, balance or benchmark the operation is supposed to preserve;
+- any sign, coordinate, pressure-gauge or nondimensionalization conversion needed to match a published case.
+
+Comments should not merely restate Python syntax. Benchmark modules should also identify the source paper or stable reference URL in their module/function documentation when practical.
+
 ## Repository status
 
 This repository is currently at the formulation/scaffolding stage. The first code will be a small, transparent numerical laboratory rather than a full CFD package.
