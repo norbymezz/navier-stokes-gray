@@ -73,6 +73,29 @@ class PeriodicVorticitySolver2D:
         if self.omega.shape != (self.grid.n, self.grid.n):
             raise ValueError("omega shape must match grid")
 
+    def diffusive_rk4_dt_limit(self, safety: float = 0.9) -> float:
+        """Return a conservative RK4 time-step limit for viscous diffusion.
+
+        For one Fourier mode, the diffusion term contributes the real-negative
+        eigenvalue ``lambda = -nu |k|^2``.  Classical RK4 is stable along the
+        negative real axis up to approximately ``|lambda dt| = 2.785``.
+
+        This limit is only a *necessary* stability check for the full nonlinear
+        solver.  A convective CFL restriction may require a still smaller step.
+        It is nevertheless valuable for convergence studies because an
+        apparently smooth low-mode initial condition can seed high Fourier
+        modes at roundoff level; those modes will grow catastrophically if the
+        explicit diffusion step lies outside the RK4 stability region.
+        """
+
+        if not (0.0 < safety <= 1.0):
+            raise ValueError("safety must lie in (0, 1]")
+        if self.nu == 0.0:
+            return float("inf")
+
+        max_k2 = float(np.max(self.grid.k2))
+        return safety * 2.785 / (self.nu * max_k2)
+
     def rhs(self, t: float, omega: np.ndarray) -> np.ndarray:
         """Evaluate the vorticity RHS at one RK stage."""
 
