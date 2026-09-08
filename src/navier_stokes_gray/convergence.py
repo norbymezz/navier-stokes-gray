@@ -55,19 +55,13 @@ class ConvergenceRate:
     order: float
 
 
-def _mesh(resolution: int) -> tuple[np.ndarray, np.ndarray]:
-    """Return an ``ij`` mesh on the project's standard 2*pi periodic domain."""
-
-    grid = make_grid(resolution)
-    return np.meshgrid(grid.x, grid.y, indexing="ij")
-
-
 def run_taylor_green_case(
     *,
     resolution: int = 32,
     nu: float = 0.05,
     final_time: float = 0.2,
     dt: float = 0.01,
+    enforce_diffusive_stability: bool = True,
 ) -> ConvergencePoint:
     """Run one Taylor--Green case and compare it with the exact solution.
 
@@ -75,6 +69,13 @@ def run_taylor_green_case(
     analytical expression used by the benchmark module.  Therefore the error
     reported here measures the numerical evolution relative to ground truth,
     rather than relative to another numerical run.
+
+    By default, the requested time step is checked against a conservative RK4
+    diffusion-stability bound.  This catches a subtle failure mode: although
+    Taylor--Green starts as one low Fourier mode, floating-point roundoff can
+    seed unresolved/high-frequency components that grow if explicit viscous
+    integration is outside the RK4 stability interval.  A convergence study
+    must never interpret such an unstable run as a discretization error.
     """
 
     if resolution < 4:
@@ -91,6 +92,15 @@ def run_taylor_green_case(
 
     omega0 = taylor_green_vorticity(x, y, 0.0, nu=nu)
     solver = PeriodicVorticitySolver2D(grid=grid, nu=nu, omega=omega0)
+
+    if enforce_diffusive_stability:
+        dt_limit = solver.diffusive_rk4_dt_limit()
+        if dt > dt_limit:
+            raise ValueError(
+                "requested dt exceeds the conservative explicit-diffusion "
+                f"RK4 limit: dt={dt:g}, limit={dt_limit:g}"
+            )
+
     solver.run(final_time=final_time, dt=dt)
 
     numerical_velocity = solver.velocity()
