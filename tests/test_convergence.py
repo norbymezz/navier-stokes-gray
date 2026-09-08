@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from navier_stokes_gray.convergence import (
     ConvergencePoint,
@@ -30,10 +31,10 @@ def test_temporal_refinement_reduces_taylor_green_error():
     """
 
     points = temporal_convergence_study(
-        [0.04, 0.02, 0.01],
+        [0.01, 0.005, 0.0025],
         resolution=32,
-        nu=0.05,
-        final_time=0.2,
+        nu=0.5,
+        final_time=0.4,
     )
     errors = np.array([p.velocity_relative_l2 for p in points])
 
@@ -50,7 +51,7 @@ def test_observed_temporal_order_is_consistent_with_rk4():
     """
 
     points = temporal_convergence_study(
-        [0.08, 0.04, 0.02],
+        [0.01, 0.005, 0.0025],
         resolution=32,
         nu=0.5,
         final_time=0.4,
@@ -62,6 +63,25 @@ def test_observed_temporal_order_is_consistent_with_rk4():
     # floating-point result.
     for rate in rates:
         assert 3.5 < rate.order < 4.5
+
+
+def test_unstable_explicit_diffusion_step_is_rejected():
+    """A refinement study must fail loudly before entering RK4 instability.
+
+    Even a low-mode Taylor--Green initial condition can acquire high Fourier
+    components at roundoff level.  Explicit viscous integration outside RK4's
+    negative-real-axis stability interval can amplify those modes and produce
+    meaningless 'convergence' data.  The runner therefore checks a conservative
+    diffusion bound before evolving the solution.
+    """
+
+    with pytest.raises(ValueError, match="diffusion"):
+        run_taylor_green_case(
+            resolution=32,
+            nu=0.5,
+            final_time=0.4,
+            dt=0.02,
+        )
 
 
 def test_observed_order_formula_with_synthetic_exact_ratio():
