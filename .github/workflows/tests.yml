@@ -30,3 +30,6 @@ jobs:
 
       - name: Run Taylor--Green convergence report
         run: python scripts/run_taylor_green_convergence.py
+
+      - name: Run periodic spatial-accuracy report
+        run: python scripts/run_spatial_accuracy.py
