@@ -93,13 +93,15 @@ function gray(k){return k^(k>>1)}
 function pad(x,b){return x.toString(2).padStart(b,'0')}
 function ruler(k){let v=1;while((k&1)===0){v++;k>>=1}return v}
 function powerSum(n,p){let s=0;for(let k=1;k<=n;k++)s+=k**p;return s}
-function clear(c){const x=c.getContext('2d');x.clearRect(0,0,c.width,c.height);return x}
+function clear(c){const x=c.getContext('2d');x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,c.width,c.height);return x}
 function drawTri(n){
  const c=$('tri'),x=clear(c),m=22,scale=Math.min((c.width-2*m)/(n+1),(c.height-2*m)/(n+1));
+ x.save();
  x.translate(m,c.height-m);
  for(let r=1;r<=n;r++)for(let j=0;j<r;j++)x.strokeRect(j*scale,-r*scale,scale,scale);
  x.save();x.translate((n+1)*scale,0);x.scale(-1,-1);
  for(let r=1;r<=n;r++)for(let j=0;j<r;j++)x.strokeRect(j*scale,-r*scale,scale,scale);
+ x.restore();
  x.restore();
  const s1=powerSum(n,1),s2=powerSum(n,2),s3=powerSum(n,3);
  $('sumtext').innerHTML='<code>S1='+s1+', 2S1='+2*s1+'='+n+'×'+(n+1)+'; S2='+s2+'; S3='+s3+'=S1²</code>';
@@ -132,7 +134,10 @@ function drawPath(){
  $('pathtext').innerHTML='<code>final = ('+end[0].toFixed(3)+', '+end[1].toFixed(3)+'), residual = '+res.toFixed(3)+'</code>';
 }
 function update(){const n=+$('n').value,b=+$('bits').value;$('nval').textContent=n;$('bitsval').textContent=b+' bits';drawTri(n);drawGray(b);drawPath()}
-['n','bits'].forEach(id=>$(id).addEventListener('input',update));$('draw').addEventListener('click',update);update();
+['n','bits'].forEach(id=>$(id).addEventListener('input',update));
+['lengths','turns','angle'].forEach(id=>$(id).addEventListener('input',drawPath));
+$('draw').addEventListener('click',update);
+update();
 </script>
 </body>
 </html>
