@@ -362,3 +362,19 @@ Comments should not merely restate Python syntax. Benchmark modules should also 
 ## Repository status
 
 This repository is currently at the formulation/scaffolding stage. The first code will be a small, transparent numerical laboratory rather than a full CFD package.
+
+
+## 15. Discrete structure research track
+
+A separate exploratory track records the algebraic structure behind local
+change, accumulation, reflected Gray traversal, power sums and reversible
+paths. It is intentionally kept distinct from claims about fluid physics.
+
+- [`docs/DISCRETE_STRUCTURE.md`](docs/DISCRETE_STRUCTURE.md) states the current identities, hypotheses and cautions.
+- [`examples/discrete-structure.html`](examples/discrete-structure.html) is a self-contained visual explorer for triangular sums, Gray/ruler changes and relative-turn paths.
+- [`src/navier_stokes_gray/discrete_structure.py`](src/navier_stokes_gray/discrete_structure.py) provides executable helpers.
+
+The immediate mathematical comparison is Gray/ruler/2-adic structure versus
+finite-difference/Faulhaber structure and dyadic multiresolution. A later
+physical test will ask whether any resulting operator reduces computational
+cost or storage at comparable benchmark error.
