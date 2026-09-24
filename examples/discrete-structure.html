@@ -16,6 +16,10 @@ canvas{width:100%;height:330px;border:1px solid #ddd;background:#fff}
 code{font-size:13px;word-break:break-all}
 table{border-collapse:collapse;width:100%;font-size:13px}
 td,th{border-bottom:1px solid #ddd;padding:5px;text-align:center}
+.math-notes{margin-top:14px}
+.math-table td,.math-table th{text-align:left;vertical-align:top}
+.status{font-weight:600;white-space:nowrap}
+.formula{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 @media(max-width:800px){
   body{padding:8px;font-size:16px}
   main{grid-template-columns:1fr;gap:10px;max-width:none}
@@ -57,6 +61,29 @@ td,th{border-bottom:1px solid #ddd;padding:5px;text-align:center}
 <div class="card"><h3>Gray: estado y bit que cambia</h3><div style="max-height:330px;overflow:auto"><table><thead><tr><th>k</th><th>Gray</th><th>cambio</th></tr></thead><tbody id="graybody"></tbody></table></div></div>
 <div class="card"><h3>Secuencia ruler</h3><canvas id="ruler" width="700" height="330"></canvas><div id="rulertext"></div></div>
 <div class="card"><h3>Recorrido con giros relativos</h3><canvas id="path" width="700" height="330"></canvas><div id="pathtext"></div></div>
+</div>
+
+<div class="card math-notes">
+<h2>Estructuras matemáticas identificadas</h2>
+<p>Separamos lo que ya es matemática conocida de lo que todavía es una hipótesis del proyecto.</p>
+<div style="overflow:auto">
+<table class="math-table">
+<thead><tr><th>Observación</th><th>Nombre conocido</th><th>Estado aquí</th></tr></thead>
+<tbody>
+<tr><td><span class="formula">1+2+...+n = n(n+1)/2</span> y duplicación por simetría</td><td>Números triangulares</td><td class="status">Identidad conocida</td></tr>
+<tr><td><span class="formula">S₂(n)=S₁(n)(2n+1)/3</span> y <span class="formula">S₃(n)=S₁(n)²</span></td><td>Sumas de potencias; marco de Faulhaber/Bernoulli</td><td class="status">Identidades conocidas</td></tr>
+<tr><td><span class="formula">ΔSₚ(n)=nᵖ</span></td><td>Diferencias finitas y acumulación discreta</td><td class="status">Estructura conocida</td></tr>
+<tr><td><span class="formula">g=b XOR (b&gt;&gt;1)</span></td><td>Código Gray binario reflejado</td><td class="status">Transformación conocida</td></tr>
+<tr><td><span class="formula">1,2,1,3,1,2,1,4,...</span></td><td>Ruler function; <span class="formula">ν₂(k)+1</span></td><td class="status">Estructura conocida</td></tr>
+<tr><td>Reconstrucción desde Gray por XOR acumulativo</td><td>Inversa del Gray reflejado</td><td class="status">Transformación conocida</td></tr>
+<tr><td><span class="formula">Dₙ=Dₙ₋₁ · n · Dₙ₋₁</span></td><td>Recursión diádica/reflejada de los cambios Gray</td><td class="status">Descripción conocida</td></tr>
+<tr><td>“Mitad + operador de simetría = estructura completa”</td><td>Patrón de construcción por reflexión/recursión</td><td class="status">Principio de trabajo</td></tr>
+<tr><td>Representar por escalas binarias, mitades y diferencias</td><td>Haar / Walsh / multirresolución diádica</td><td class="status">Línea a investigar</td></tr>
+<tr><td>Usar estas estructuras para reducir cálculo o almacenamiento manteniendo error comparable</td><td>Coarse-graining / multiresolución / reducción de orden</td><td class="status">Hipótesis del proyecto</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Criterio:</strong> que dos objetos se parezcan no basta. La conexión se conserva sólo si puede escribirse como una transformación, una identidad o una prueba numérica medible.</p>
 </div>
 </section>
 </main>
