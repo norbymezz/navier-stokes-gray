@@ -11,6 +11,12 @@ main{max-width:1200px;margin:auto;display:grid;grid-template-columns:280px 1fr;g
 .card{background:white;border:1px solid #ccc;border-radius:10px;padding:14px}
 label{display:block;margin:10px 0 4px}
 input,button{width:100%;box-sizing:border-box;padding:8px}
+.segment-list{display:grid;gap:8px;margin-top:8px}
+.segment-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end}
+.segment-row.first{grid-template-columns:1fr}
+.segment-row label{margin:0 0 3px;font-size:12px}
+.segment-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.range-note{font-size:12px;color:#555;margin-top:2px}
 canvas{width:100%;height:330px;border:1px solid #ddd;background:#fff}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 code{font-size:13px;word-break:break-all}
@@ -29,7 +35,10 @@ td,th{border-bottom:1px solid #ddd;padding:5px;text-align:center}
   h3{font-size:1.15rem;margin:0 0 10px}
   label{font-size:1rem;margin-top:14px}
   input,button{font-size:16px;min-height:44px;padding:10px}
-  input[type="range"]{min-height:36px}
+  input[type="range"]{min-height:40px}
+  .segment-row{grid-template-columns:1fr 1fr}
+  .segment-row.first{grid-template-columns:1fr}
+  .segment-row label{font-size:14px}
   canvas{height:260px}
   code{font-size:14px}
   table{font-size:14px}
@@ -47,18 +56,34 @@ td,th{border-bottom:1px solid #ddd;padding:5px;text-align:center}
 <main>
 <section class="card">
 <h2>Controles</h2>
-<label>n para sumas</label><input id="n" type="range" min="1" max="32" value="8"><div id="nval"></div>
-<label>bits Gray</label><input id="bits" type="range" min="1" max="6" value="3"><div id="bitsval"></div>
-<label>Longitudes del recorrido</label><input id="lengths" value="8,7,6,5,4,3,2,1">
-<label>Giros relativos (grados)</label><input id="turns" value="90,45,45,90,45,45,90">
-<label>Ángulo inicial</label><input id="angle" type="number" value="45">
-<button id="draw">Actualizar</button>
+<label>n para sumas</label>
+<input id="n" type="range" min="1" max="100" value="5">
+<div id="nval"></div>
+<div class="range-note">rango: 1–100</div>
+
+<label>bits Gray</label>
+<input id="bits" type="range" min="1" max="10" value="4">
+<div id="bitsval"></div>
+<div class="range-note">rango: 1–10 bits</div>
+
+<label>Ángulo inicial del recorrido</label>
+<input id="angle" type="number" value="45" step="1">
+
+<label>Segmentos y giros intermedios</label>
+<div id="segments" class="segment-list"></div>
+<div class="segment-actions">
+  <button id="addSegment" type="button">+ segmento</button>
+  <button id="removeSegment" type="button">− segmento</button>
+</div>
+
+<button id="draw" type="button">Actualizar todo</button>
+<p>Default: 5 → 4 → 3 → 2 → 1, con direcciones 45°, izquierda, abajo, 45° arriba-derecha, izquierda. La suma de longitudes es 15.</p>
 <p>Las vistas son representaciones; no implican equivalencia física entre las estructuras.</p>
 </section>
 <section>
 <div class="grid">
 <div class="card"><h3>Triangular y duplicación</h3><canvas id="tri" width="700" height="330"></canvas><div id="sumtext"></div></div>
-<div class="card"><h3>Gray: estado y bit que cambia</h3><div style="max-height:330px;overflow:auto"><table><thead><tr><th>k</th><th>Gray</th><th>cambio</th></tr></thead><tbody id="graybody"></tbody></table></div></div>
+<div class="card"><h3>Gray: estado y bit que cambia</h3><div style="max-height:430px;overflow:auto;overscroll-behavior:contain"><table><thead><tr><th>k</th><th>Gray</th><th>cambio</th></tr></thead><tbody id="graybody"></tbody></table></div></div>
 <div class="card"><h3>Secuencia ruler</h3><canvas id="ruler" width="700" height="330"></canvas><div id="rulertext"></div></div>
 <div class="card"><h3>Recorrido con giros relativos</h3><canvas id="path" width="700" height="330"></canvas><div id="pathtext"></div></div>
 </div>
@@ -113,30 +138,88 @@ function drawGray(bits){
    if(k>0){ch=ruler(k);changes.push(ch)}
    body.insertAdjacentHTML('beforeend','<tr><td>'+k+'</td><td><code>'+pad(g,bits)+'</code></td><td>'+ch+'</td></tr>');
  }
- $('rulertext').innerHTML='<code>'+changes.join(', ')+'</code>';
+ const shown=changes.slice(0,128);
+ $('rulertext').innerHTML='<code>'+shown.join(', ')+(changes.length>shown.length?', … ('+changes.length+' cambios)':'')+'</code>';
  const c=$('ruler'),x=clear(c),w=(c.width-40)/Math.max(changes.length,1),max=bits;
  x.beginPath();
- changes.forEach((v,i)=>{const px=20+(i+.5)*w,py=c.height-25-v*(c.height-50)/(max+0.5);if(i===0)x.moveTo(px,py);else x.lineTo(px,py);x.fillText(String(v),px-3,py-7)});
+ changes.forEach((v,i)=>{
+   const px=20+(i+.5)*w,py=c.height-25-v*(c.height-50)/(max+0.5);
+   if(i===0)x.moveTo(px,py);else x.lineTo(px,py);
+   if(changes.length<=127 || v>=Math.max(3,bits-1)) x.fillText(String(v),px-3,py-7);
+ });
  x.stroke();
 }
+let segmentData=[
+  {length:5,turn:null},
+  {length:4,turn:135},
+  {length:3,turn:90},
+  {length:2,turn:135},
+  {length:1,turn:135}
+];
+
+function renderSegments(){
+ const box=$('segments');box.innerHTML='';
+ segmentData.forEach((seg,i)=>{
+   const row=document.createElement('div');
+   row.className='segment-row'+(i===0?' first':'');
+   if(i===0){
+     row.innerHTML='<div><label>Longitud 1</label><input class="seg-length" data-i="'+i+'" type="number" min="0" step="1" value="'+seg.length+'"></div>';
+   }else{
+     row.innerHTML='<div><label>Giro antes de '+(i+1)+' (°)</label><input class="seg-turn" data-i="'+i+'" type="number" step="1" value="'+seg.turn+'"></div>'+
+                   '<div><label>Longitud '+(i+1)+'</label><input class="seg-length" data-i="'+i+'" type="number" min="0" step="1" value="'+seg.length+'"></div>';
+   }
+   box.appendChild(row);
+ });
+ box.querySelectorAll('.seg-length').forEach(el=>el.addEventListener('input',e=>{
+   segmentData[+e.target.dataset.i].length=Number(e.target.value);drawPath();
+ }));
+ box.querySelectorAll('.seg-turn').forEach(el=>el.addEventListener('input',e=>{
+   segmentData[+e.target.dataset.i].turn=Number(e.target.value);drawPath();
+ }));
+}
+
+function addSegment(){
+ const last=segmentData[segmentData.length-1];
+ segmentData.push({length:Math.max(1,(Number(last?.length)||1)-1),turn:45});
+ renderSegments();drawPath();
+}
+function removeSegment(){
+ if(segmentData.length<=1)return;
+ segmentData.pop();renderSegments();drawPath();
+}
+
 function drawPath(){
- const lengths=$('lengths').value.split(',').map(Number).filter(Number.isFinite);
- const turns=$('turns').value.split(',').map(Number).filter(Number.isFinite);
- if(turns.length!==Math.max(0,lengths.length-1)){$('pathtext').textContent='Debe haber exactamente un giro menos que segmentos.';return}
+ const lengths=segmentData.map(s=>Number(s.length)).filter(Number.isFinite);
+ const turns=segmentData.slice(1).map(s=>Number(s.turn));
  let a=Number($('angle').value)*Math.PI/180,p=[[0,0]],x=0,y=0;
- lengths.forEach((L,i)=>{if(i>0)a+=turns[i-1]*Math.PI/180;x+=L*Math.cos(a);y+=L*Math.sin(a);p.push([x,y])});
+ lengths.forEach((L,i)=>{
+   if(i>0)a+=turns[i-1]*Math.PI/180;
+   x+=L*Math.cos(a);y+=L*Math.sin(a);p.push([x,y]);
+ });
  const xs=p.map(q=>q[0]),ys=p.map(q=>q[1]),minx=Math.min(...xs),maxx=Math.max(...xs),miny=Math.min(...ys),maxy=Math.max(...ys);
  const c=$('path'),ctx=clear(c),m=35,s=Math.min((c.width-2*m)/(maxx-minx||1),(c.height-2*m)/(maxy-miny||1));
  const tx=q=>m+(q[0]-minx)*s,ty=q=>c.height-m-(q[1]-miny)*s;
  ctx.beginPath();p.forEach((q,i)=>i?ctx.lineTo(tx(q),ty(q)):ctx.moveTo(tx(q),ty(q)));ctx.stroke();
- p.forEach((q,i)=>{ctx.beginPath();ctx.arc(tx(q),ty(q),3,0,Math.PI*2);ctx.fill();ctx.fillText(i?String(lengths[i-1]):'0',tx(q)+5,ty(q)-5)});
- const end=p[p.length-1],res=Math.hypot(end[0],end[1]);
- $('pathtext').innerHTML='<code>final = ('+end[0].toFixed(3)+', '+end[1].toFixed(3)+'), residual = '+res.toFixed(3)+'</code>';
+ p.forEach((q,i)=>{
+   ctx.beginPath();ctx.arc(tx(q),ty(q),3,0,Math.PI*2);ctx.fill();
+   if(i>0)ctx.fillText(String(lengths[i-1]),tx(q)+5,ty(q)-5);
+ });
+ const end=p[p.length-1],res=Math.hypot(end[0],end[1]),sum=lengths.reduce((a,b)=>a+b,0);
+ $('pathtext').innerHTML='<code>suma = '+sum+'; final = ('+end[0].toFixed(3)+', '+end[1].toFixed(3)+'); residual = '+res.toFixed(3)+'</code>';
 }
-function update(){const n=+$('n').value,b=+$('bits').value;$('nval').textContent=n;$('bitsval').textContent=b+' bits';drawTri(n);drawGray(b);drawPath()}
+
+function update(){
+ const n=+$('n').value,b=+$('bits').value;
+ $('nval').textContent=n;
+ $('bitsval').textContent=b+' bits · '+(1<<b)+' estados';
+ drawTri(n);drawGray(b);drawPath();
+}
 ['n','bits'].forEach(id=>$(id).addEventListener('input',update));
-['lengths','turns','angle'].forEach(id=>$(id).addEventListener('input',drawPath));
+$('angle').addEventListener('input',drawPath);
+$('addSegment').addEventListener('click',addSegment);
+$('removeSegment').addEventListener('click',removeSegment);
 $('draw').addEventListener('click',update);
+renderSegments();
 update();
 </script>
 </body>
