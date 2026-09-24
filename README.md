@@ -371,7 +371,7 @@ change, accumulation, reflected Gray traversal, power sums and reversible
 paths. It is intentionally kept distinct from claims about fluid physics.
 
 - [`docs/DISCRETE_STRUCTURE.md`](docs/DISCRETE_STRUCTURE.md) states the current identities, hypotheses and cautions.
-- [`examples/discrete-structure.html`](examples/discrete-structure.html) is a self-contained visual explorer for triangular sums, Gray/ruler changes and relative-turn paths.
+- **[Open the discrete-structure visualizer](https://github.com/norbymezz/navier-stokes-gray/blob/initial-framework/examples/discrete-structure.html)** — self-contained HTML for triangular sums, Gray/ruler changes and relative-turn paths.
 - [`src/navier_stokes_gray/discrete_structure.py`](src/navier_stokes_gray/discrete_structure.py) provides executable helpers.
 
 The immediate mathematical comparison is Gray/ruler/2-adic structure versus
