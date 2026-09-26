@@ -7,7 +7,7 @@
 <style>
 :root{font-family:system-ui,sans-serif;color:#111;background:#f5f5f5}
 body{margin:0;padding:16px}
-main{max-width:1200px;margin:auto;display:grid;grid-template-columns:280px 1fr;gap:14px}
+main{max-width:1200px;margin:auto;display:block}
 .card{background:white;border:1px solid #ccc;border-radius:10px;padding:14px}
 label{display:block;margin:10px 0 4px}
 input,button{width:100%;box-sizing:border-box;padding:8px}
@@ -19,6 +19,16 @@ input,button{width:100%;box-sizing:border-box;padding:8px}
 .range-note{font-size:12px;color:#555;margin-top:2px}
 canvas{width:100%;height:330px;border:1px solid #ddd;background:#fff}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.concept-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.series-card{border:3px solid #39c94a}
+.gray-card{border:3px solid #e33b3b}
+.path-card{margin-top:14px;border:2px solid #4b74d9}
+.formula-box{background:#f7f7f7;border:1px solid #ddd;border-radius:8px;padding:10px;margin:10px 0;line-height:1.55}
+.formula-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;margin:4px 0}
+.gray-layout{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.path-layout{display:grid;grid-template-columns:320px 1fr;gap:14px;align-items:start}
+.control-block{background:#fafafa;border:1px solid #ddd;border-radius:8px;padding:10px}
+.section-note{font-size:12px;color:#555}
 code{font-size:13px;word-break:break-all}
 table{border-collapse:collapse;width:100%;font-size:13px}
 td,th{border-bottom:1px solid #ddd;padding:5px;text-align:center}
@@ -28,8 +38,8 @@ td,th{border-bottom:1px solid #ddd;padding:5px;text-align:center}
 .formula{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 @media(max-width:800px){
   body{padding:8px;font-size:16px}
-  main{grid-template-columns:1fr;gap:10px;max-width:none}
-  .grid{grid-template-columns:1fr;gap:10px}
+  main{max-width:none}
+  .grid,.concept-grid,.gray-layout,.path-layout{grid-template-columns:1fr;gap:10px}
   .card{padding:12px;border-radius:8px}
   h2{font-size:1.35rem;margin:0 0 12px}
   h3{font-size:1.15rem;margin:0 0 10px}
@@ -54,40 +64,90 @@ td,th{border-bottom:1px solid #ddd;padding:5px;text-align:center}
 </head>
 <body>
 <div style="max-width:1200px;margin:0 auto 14px"><a href="geometric-lab.html" style="display:inline-block;padding:10px 14px;border:1px solid #bbb;border-radius:8px;background:#fff;color:#111;text-decoration:none;font-weight:700">Abrir Geometric Lab →</a></div>
+<div style="max-width:1200px;margin:0 auto 14px"><a href="geometric-lab.html" style="display:inline-block;padding:10px 14px;border:1px solid #bbb;border-radius:8px;background:#fff;color:#111;text-decoration:none;font-weight:700">Abrir Geometric Lab →</a></div>
 <main>
-<section class="card">
-<h2>Controles</h2>
-<label>n para sumas</label>
-<input id="n" type="range" min="1" max="100" value="5">
-<div id="nval"></div>
-<div class="range-note">rango: 1–100</div>
+<div class="concept-grid">
 
-<label>bits Gray</label>
-<input id="bits" type="range" min="1" max="10" value="4">
-<div id="bitsval"></div>
-<div class="range-note">rango: 1–10 bits</div>
+  <section class="card series-card">
+    <h2>Series: naturales, cuadrados y cubos</h2>
+    <div class="control-block">
+      <label>n</label>
+      <input id="n" type="range" min="1" max="100" value="5">
+      <div id="nval"></div>
+      <div class="range-note">rango: 1–100</div>
+    </div>
 
-<label>Ángulo inicial del recorrido</label>
-<input id="angle" type="number" value="45" step="1">
+    <div class="formula-box">
+      <div class="formula-line">S₁(n)=Σ k = n(n+1)/2</div>
+      <div class="formula-line">S₂(n)=Σ k² = n(n+1)(2n+1)/6 = S₁(n)(2n+1)/3</div>
+      <div class="formula-line">S₃(n)=Σ k³ = [n(n+1)/2]² = S₁(n)²</div>
+    </div>
 
-<label>Segmentos y giros intermedios</label>
-<div id="segments" class="segment-list"></div>
-<div class="segment-actions">
-  <button id="addSegment" type="button">+ segmento</button>
-  <button id="removeSegment" type="button">− segmento</button>
+    <h3>Triangular y duplicación</h3>
+    <canvas id="tri" width="700" height="330"></canvas>
+    <div id="sumtext"></div>
+  </section>
+
+  <section class="card gray-card">
+    <h2>Gray: estados y cambio local</h2>
+    <div class="control-block">
+      <label>bits Gray</label>
+      <input id="bits" type="range" min="1" max="10" value="4">
+      <div id="bitsval"></div>
+      <div class="range-note">rango: 1–10 bits</div>
+    </div>
+
+    <div class="formula-box">
+      <div class="formula-line">g = b ⊕ (b &gt;&gt; 1)</div>
+      <div class="formula-line">gₖ ⊕ gₖ₋₁ = 2^(ν₂(k))</div>
+      <div class="formula-line">bit que cambia: r(k)=ν₂(k)+1</div>
+      <div class="formula-line">Dₙ = Dₙ₋₁ · n · Dₙ₋₁</div>
+    </div>
+
+    <div class="gray-layout">
+      <div>
+        <h3>Estado Gray</h3>
+        <div style="max-height:430px;overflow:auto;overscroll-behavior:contain">
+          <table>
+            <thead><tr><th>k</th><th>Gray</th><th>cambio</th></tr></thead>
+            <tbody id="graybody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Secuencia ruler</h3>
+        <canvas id="ruler" width="700" height="330"></canvas>
+        <div id="rulertext"></div>
+      </div>
+    </div>
+    <p class="section-note">El mismo slider de bits actualiza simultáneamente la tabla Gray y la secuencia ruler.</p>
+  </section>
+
 </div>
 
-<button id="draw" type="button">Actualizar todo</button>
-<p>Default: 5 → 4 → 3 → 2 → 1, con direcciones 45°, izquierda, abajo, 45° arriba-derecha, izquierda. La suma de longitudes es 15.</p>
-<p>Las vistas son representaciones; no implican equivalencia física entre las estructuras.</p>
+<section class="card path-card">
+  <h2>Recorrido con giros relativos</h2>
+  <div class="path-layout">
+    <div class="control-block">
+      <label>Ángulo inicial del recorrido</label>
+      <input id="angle" type="number" value="45" step="1">
+
+      <label>Segmentos y giros intermedios</label>
+      <div id="segments" class="segment-list"></div>
+      <div class="segment-actions">
+        <button id="addSegment" type="button">+ segmento</button>
+        <button id="removeSegment" type="button">− segmento</button>
+      </div>
+
+      <button id="draw" type="button">Actualizar recorrido</button>
+      <p class="section-note">Default: 5 → 4 → 3 → 2 → 1. Suma de longitudes: 15.</p>
+    </div>
+    <div>
+      <canvas id="path" width="700" height="330"></canvas>
+      <div id="pathtext"></div>
+    </div>
+  </div>
 </section>
-<section>
-<div class="grid">
-<div class="card"><h3>Triangular y duplicación</h3><canvas id="tri" width="700" height="330"></canvas><div id="sumtext"></div></div>
-<div class="card"><h3>Gray: estado y bit que cambia</h3><div style="max-height:430px;overflow:auto;overscroll-behavior:contain"><table><thead><tr><th>k</th><th>Gray</th><th>cambio</th></tr></thead><tbody id="graybody"></tbody></table></div></div>
-<div class="card"><h3>Secuencia ruler</h3><canvas id="ruler" width="700" height="330"></canvas><div id="rulertext"></div></div>
-<div class="card"><h3>Recorrido con giros relativos</h3><canvas id="path" width="700" height="330"></canvas><div id="pathtext"></div></div>
-</div>
 
 <div class="card math-notes">
 <h2>Estructuras matemáticas identificadas</h2>
@@ -111,7 +171,6 @@ td,th{border-bottom:1px solid #ddd;padding:5px;text-align:center}
 </div>
 <p><strong>Criterio:</strong> que dos objetos se parezcan no basta. La conexión se conserva sólo si puede escribirse como una transformación, una identidad o una prueba numérica medible.</p>
 </div>
-</section>
 </main>
 <script>
 const $=id=>document.getElementById(id);
