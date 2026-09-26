@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Discrete Structure Explorer</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#111;background:#f5f5f5}
+body{margin:0;padding:16px}
+main{max-width:1200px;margin:auto;display:block}
+.card{background:white;border:1px solid #ccc;border-radius:10px;padding:14px}
+label{display:block;margin:10px 0 4px}
+input,button{width:100%;box-sizing:border-box;padding:8px}
+.segment-list{display:grid;gap:8px;margin-top:8px}
+.segment-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end}
+.segment-row.first{grid-template-columns:1fr}
+.segment-row label{margin:0 0 3px;font-size:12px}
+.segment-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.range-note{font-size:12px;color:#555;margin-top:2px}
+canvas{width:100%;height:330px;border:1px solid #ddd;background:#fff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.concept-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.series-card{border:3px solid #39c94a}
+.gray-card{border:3px solid #e33b3b}
+.path-card{margin-top:14px;border:2px solid #4b74d9}
+.formula-box{background:#f7f7f7;border:1px solid #ddd;border-radius:8px;padding:10px;margin:10px 0;line-height:1.55}
+.formula-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;margin:4px 0}
+.gray-layout{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.path-layout{display:grid;grid-template-columns:320px 1fr;gap:14px;align-items:start}
+.control-block{background:#fafafa;border:1px solid #ddd;border-radius:8px;padding:10px}
+.section-note{font-size:12px;color:#555}
+code{font-size:13px;word-break:break-all}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{border-bottom:1px solid #ddd;padding:5px;text-align:center}
+.math-notes{margin-top:14px}
+.math-table td,.math-table th{text-align:left;vertical-align:top}
+.status{font-weight:600;white-space:nowrap}
+.formula{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media(max-width:800px){
+  body{padding:8px;font-size:16px}
+  main{max-width:none}
+  .grid,.concept-grid,.gray-layout,.path-layout{grid-template-columns:1fr;gap:10px}
+  .card{padding:12px;border-radius:8px}
+  h2{font-size:1.35rem;margin:0 0 12px}
+  h3{font-size:1.15rem;margin:0 0 10px}
+  label{font-size:1rem;margin-top:14px}
+  input,button{font-size:16px;min-height:44px;padding:10px}
+  input[type="range"]{min-height:40px}
+  .segment-row{grid-template-columns:1fr 1fr}
+  .segment-row.first{grid-template-columns:1fr}
+  .segment-row label{font-size:14px}
+  canvas{height:260px}
+  code{font-size:14px}
+  table{font-size:14px}
+  td,th{padding:7px 5px}
+  section.card p{font-size:14px;line-height:1.35}
+}
+@media(max-width:480px){
+  body{padding:6px}
+  .card{padding:10px}
+  canvas{height:230px}
+}
+</style>
+</head>
+<body>
+<main>
+<div class="concept-grid">
+
+  <section class="card series-card">
+    <h2>Series: naturales, cuadrados y cubos</h2>
+    <div class="control-block">
+      <label>n</label>
+      <input id="n" type="range" min="1" max="100" value="5">
+      <div id="nval"></div>
+      <div class="range-note">rango: 1–100</div>
+    </div>
+
+    <div class="formula-box">
+      <div class="formula-line">S₁(n)=Σ k = n(n+1)/2</div>
+      <div class="formula-line">S₂(n)=Σ k² = n(n+1)(2n+1)/6 = S₁(n)(2n+1)/3</div>
+      <div class="formula-line">S₃(n)=Σ k³ = [n(n+1)/2]² = S₁(n)²</div>
+    </div>
+
+    <h3>Triangular y duplicación</h3>
+    <canvas id="tri" width="700" height="330"></canvas>
+    <div id="sumtext"></div>
+  </section>
+
+  <section class="card gray-card">
+    <h2>Gray: estados y cambio local</h2>
+    <div class="control-block">
+      <label>bits Gray</label>
+      <input id="bits" type="range" min="1" max="10" value="4">
+      <div id="bitsval"></div>
+      <div class="range-note">rango: 1–10 bits</div>
+    </div>
+
+    <div class="formula-box">
+      <div class="formula-line">g = b ⊕ (b &gt;&gt; 1)</div>
+      <div class="formula-line">gₖ ⊕ gₖ₋₁ = 2^(ν₂(k))</div>
+      <div class="formula-line">bit que cambia: r(k)=ν₂(k)+1</div>
+      <div class="formula-line">Dₙ = Dₙ₋₁ · n · Dₙ₋₁</div>
+    </div>
+
+    <div class="gray-layout">
+      <div>
+        <h3>Estado Gray</h3>
+        <div style="max-height:430px;overflow:auto;overscroll-behavior:contain">
+          <table>
+            <thead><tr><th>k</th><th>Gray</th><th>cambio</th></tr></thead>
+            <tbody id="graybody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Secuencia ruler</h3>
+        <canvas id="ruler" width="700" height="330"></canvas>
+        <div id="rulertext"></div>
+      </div>
+    </div>
+    <p class="section-note">El mismo slider de bits actualiza simultáneamente la tabla Gray y la secuencia ruler.</p>
+  </section>
+
+</div>
+
+<section class="card path-card">
+  <h2>Recorrido con giros relativos</h2>
+  <div class="path-layout">
+    <div class="control-block">
+      <label>Ángulo inicial del recorrido</label>
+      <input id="angle" type="number" value="45" step="1">
+
+      <label>Segmentos y giros intermedios</label>
+      <div id="segments" class="segment-list"></div>
+      <div class="segment-actions">
+        <button id="addSegment" type="button">+ segmento</button>
+        <button id="removeSegment" type="button">− segmento</button>
+      </div>
+
+      <button id="draw" type="button">Actualizar recorrido</button>
+      <p class="section-note">Default: 5 → 4 → 3 → 2 → 1. Suma de longitudes: 15.</p>
+    </div>
+    <div>
+      <canvas id="path" width="700" height="330"></canvas>
+      <div id="pathtext"></div>
+    </div>
+  </div>
+</section>
+
+<div class="card math-notes">
+<h2>Estructuras matemáticas identificadas</h2>
+<p>Separamos lo que ya es matemática conocida de lo que todavía es una hipótesis del proyecto.</p>
+<div style="overflow:auto">
+<table class="math-table">
+<thead><tr><th>Observación</th><th>Nombre conocido</th><th>Estado aquí</th></tr></thead>
+<tbody>
+<tr><td><span class="formula">1+2+...+n = n(n+1)/2</span> y duplicación por simetría</td><td>Números triangulares</td><td class="status">Identidad conocida</td></tr>
+<tr><td><span class="formula">S₂(n)=S₁(n)(2n+1)/3</span> y <span class="formula">S₃(n)=S₁(n)²</span></td><td>Sumas de potencias; marco de Faulhaber/Bernoulli</td><td class="status">Identidades conocidas</td></tr>
+<tr><td><span class="formula">ΔSₚ(n)=nᵖ</span></td><td>Diferencias finitas y acumulación discreta</td><td class="status">Estructura conocida</td></tr>
+<tr><td><span class="formula">g=b XOR (b&gt;&gt;1)</span></td><td>Código Gray binario reflejado</td><td class="status">Transformación conocida</td></tr>
+<tr><td><span class="formula">1,2,1,3,1,2,1,4,...</span></td><td>Ruler function; <span class="formula">ν₂(k)+1</span></td><td class="status">Estructura conocida</td></tr>
+<tr><td>Reconstrucción desde Gray por XOR acumulativo</td><td>Inversa del Gray reflejado</td><td class="status">Transformación conocida</td></tr>
+<tr><td><span class="formula">Dₙ=Dₙ₋₁ · n · Dₙ₋₁</span></td><td>Recursión diádica/reflejada de los cambios Gray</td><td class="status">Descripción conocida</td></tr>
+<tr><td>“Mitad + operador de simetría = estructura completa”</td><td>Patrón de construcción por reflexión/recursión</td><td class="status">Principio de trabajo</td></tr>
+<tr><td>Representar por escalas binarias, mitades y diferencias</td><td>Haar / Walsh / multirresolución diádica</td><td class="status">Línea a investigar</td></tr>
+<tr><td>Usar estas estructuras para reducir cálculo o almacenamiento manteniendo error comparable</td><td>Coarse-graining / multiresolución / reducción de orden</td><td class="status">Hipótesis del proyecto</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Criterio:</strong> que dos objetos se parezcan no basta. La conexión se conserva sólo si puede escribirse como una transformación, una identidad o una prueba numérica medible.</p>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function gray(k){return k^(k>>1)}
+function pad(x,b){return x.toString(2).padStart(b,'0')}
+function ruler(k){let v=1;while((k&1)===0){v++;k>>=1}return v}
+function powerSum(n,p){let s=0;for(let k=1;k<=n;k++)s+=k**p;return s}
+function clear(c){const x=c.getContext('2d');x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,c.width,c.height);return x}
+function drawTri(n){
+ const c=$('tri'),x=clear(c),m=22,scale=Math.min((c.width-2*m)/(n+1),(c.height-2*m)/(n+1));
+ x.save();
+ x.translate(m,c.height-m);
+ for(let r=1;r<=n;r++)for(let j=0;j<r;j++)x.strokeRect(j*scale,-r*scale,scale,scale);
+ x.save();x.translate((n+1)*scale,0);x.scale(-1,-1);
+ for(let r=1;r<=n;r++)for(let j=0;j<r;j++)x.strokeRect(j*scale,-r*scale,scale,scale);
+ x.restore();
+ x.restore();
+ const s1=powerSum(n,1),s2=powerSum(n,2),s3=powerSum(n,3);
+ $('sumtext').innerHTML='<code>S1='+s1+', 2S1='+2*s1+'='+n+'×'+(n+1)+'; S2='+s2+'; S3='+s3+'=S1²</code>';
+}
+function drawGray(bits){
+ const body=$('graybody');body.innerHTML='';const total=1<<bits,changes=[];
+ for(let k=0;k<total;k++){
+   const g=gray(k);let ch='—';
+   if(k>0){ch=ruler(k);changes.push(ch)}
+   body.insertAdjacentHTML('beforeend','<tr><td>'+k+'</td><td><code>'+pad(g,bits)+'</code></td><td>'+ch+'</td></tr>');
+ }
+ const shown=changes.slice(0,128);
+ $('rulertext').innerHTML='<code>'+shown.join(', ')+(changes.length>shown.length?', … ('+changes.length+' cambios)':'')+'</code>';
+ const c=$('ruler'),x=clear(c),w=(c.width-40)/Math.max(changes.length,1),max=bits;
+ x.beginPath();
+ changes.forEach((v,i)=>{
+   const px=20+(i+.5)*w,py=c.height-25-v*(c.height-50)/(max+0.5);
+   if(i===0)x.moveTo(px,py);else x.lineTo(px,py);
+   if(changes.length<=127 || v>=Math.max(3,bits-1)) x.fillText(String(v),px-3,py-7);
+ });
+ x.stroke();
+}
+let segmentData=[
+  {length:5,turn:null},
+  {length:4,turn:135},
+  {length:3,turn:90},
+  {length:2,turn:135},
+  {length:1,turn:135}
+];
+
+function renderSegments(){
+ const box=$('segments');box.innerHTML='';
+ segmentData.forEach((seg,i)=>{
+   const row=document.createElement('div');
+   row.className='segment-row'+(i===0?' first':'');
+   if(i===0){
+     row.innerHTML='<div><label>Longitud 1</label><input class="seg-length" data-i="'+i+'" type="number" min="0" step="1" value="'+seg.length+'"></div>';
+   }else{
+     row.innerHTML='<div><label>Giro antes de '+(i+1)+' (°)</label><input class="seg-turn" data-i="'+i+'" type="number" step="1" value="'+seg.turn+'"></div>'+
+                   '<div><label>Longitud '+(i+1)+'</label><input class="seg-length" data-i="'+i+'" type="number" min="0" step="1" value="'+seg.length+'"></div>';
+   }
+   box.appendChild(row);
+ });
+ box.querySelectorAll('.seg-length').forEach(el=>el.addEventListener('input',e=>{
+   segmentData[+e.target.dataset.i].length=Number(e.target.value);drawPath();
+ }));
+ box.querySelectorAll('.seg-turn').forEach(el=>el.addEventListener('input',e=>{
+   segmentData[+e.target.dataset.i].turn=Number(e.target.value);drawPath();
+ }));
+}
+
+function addSegment(){
+ const last=segmentData[segmentData.length-1];
+ segmentData.push({length:Math.max(1,(Number(last?.length)||1)-1),turn:45});
+ renderSegments();drawPath();
+}
+function removeSegment(){
+ if(segmentData.length<=1)return;
+ segmentData.pop();renderSegments();drawPath();
+}
+
+function drawPath(){
+ const lengths=segmentData.map(s=>Number(s.length)).filter(Number.isFinite);
+ const turns=segmentData.slice(1).map(s=>Number(s.turn));
+ let a=Number($('angle').value)*Math.PI/180,p=[[0,0]],x=0,y=0;
+ lengths.forEach((L,i)=>{
+   if(i>0)a+=turns[i-1]*Math.PI/180;
+   x+=L*Math.cos(a);y+=L*Math.sin(a);p.push([x,y]);
+ });
+ const xs=p.map(q=>q[0]),ys=p.map(q=>q[1]),minx=Math.min(...xs),maxx=Math.max(...xs),miny=Math.min(...ys),maxy=Math.max(...ys);
+ const c=$('path'),ctx=clear(c),m=35,s=Math.min((c.width-2*m)/(maxx-minx||1),(c.height-2*m)/(maxy-miny||1));
+ const tx=q=>m+(q[0]-minx)*s,ty=q=>c.height-m-(q[1]-miny)*s;
+ ctx.beginPath();p.forEach((q,i)=>i?ctx.lineTo(tx(q),ty(q)):ctx.moveTo(tx(q),ty(q)));ctx.stroke();
+ p.forEach((q,i)=>{
+   ctx.beginPath();ctx.arc(tx(q),ty(q),3,0,Math.PI*2);ctx.fill();
+   if(i>0)ctx.fillText(String(lengths[i-1]),tx(q)+5,ty(q)-5);
+ });
+ const end=p[p.length-1],res=Math.hypot(end[0],end[1]),sum=lengths.reduce((a,b)=>a+b,0);
+ $('pathtext').innerHTML='<code>suma = '+sum+'; final = ('+end[0].toFixed(3)+', '+end[1].toFixed(3)+'); residual = '+res.toFixed(3)+'</code>';
+}
+
+function update(){
+ const n=+$('n').value,b=+$('bits').value;
+ $('nval').textContent=n;
+ $('bitsval').textContent=b+' bits · '+(1<<b)+' estados';
+ drawTri(n);drawGray(b);drawPath();
+}
+['n','bits'].forEach(id=>$(id).addEventListener('input',update));
+$('angle').addEventListener('input',drawPath);
+$('addSegment').addEventListener('click',addSegment);
+$('removeSegment').addEventListener('click',removeSegment);
+$('draw').addEventListener('click',update);
+renderSegments();
+update();
+</script>
+</body>
+</html>
