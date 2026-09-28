@@ -33,7 +33,12 @@ canvas{width:100%;height:320px;border:1px solid #ddd;background:#fff;display:blo
 audio{width:100%;margin-top:10px}
 .range-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin-top:10px}
 .small{font-size:12px;color:#666}
-@media(max-width:700px){.controls,.meta,.midi-actions{grid-template-columns:1fr}.range-row{grid-template-columns:1fr}.range-row span:last-child{text-align:right}canvas{height:240px}.pitch-canvas{height:210px}.table-wrap{max-height:300px}}
+.transport{display:grid;grid-template-columns:auto auto 1fr auto;gap:8px;align-items:center;margin:10px 0}
+.transport button{width:auto;min-width:84px}
+.analysis-options{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fafafa}
+.analysis-options label{display:flex;align-items:center;gap:6px;font-size:14px}
+.analysis-options input{width:auto}
+@media(max-width:700px){.controls,.meta,.midi-actions{grid-template-columns:1fr}.range-row{grid-template-columns:1fr}.range-row span:last-child{text-align:right}.transport{grid-template-columns:1fr 1fr}.transport input{grid-column:1/-1}.transport span{grid-column:1/-1;text-align:right}canvas{height:240px}.pitch-canvas{height:210px}.table-wrap{max-height:300px}}
 </style>
 </head>
 <body>
@@ -61,6 +66,13 @@ audio{width:100%;margin-top:10px}
 <div class="card">
   <h2>Amplitud vs. tiempo</h2>
   <canvas id="wave" width="1200" height="360" aria-label="Forma de onda"></canvas>
+  <div class="transport">
+    <button id="playPauseBtn" type="button" disabled>▶ Ejecutar</button>
+    <button id="pauseBtn" type="button" disabled>Ⅱ Pausar</button>
+    <input id="timeline" type="range" min="0" max="0" step="0.001" value="0" disabled aria-label="Cursor temporal sincronizado">
+    <span id="timelineVal">0.000 s</span>
+  </div>
+  <div class="small">El cursor es común a las dos gráficas. Tocá cualquiera de ellas para seleccionar ese instante.</div>
   <div class="range-row">
     <span>Zoom</span>
     <input id="zoom" type="range" min="1" max="20" step="1" value="1">
@@ -81,7 +93,13 @@ audio{width:100%;margin-top:10px}
 
 <div class="card">
   <h2>Audio → secuencia MIDI</h2>
-  <div class="small">Extracción monofónica aproximada: nota (note-on/note-off), duración, velocidad y pitch bend. Está pensada para voz, silbido o una melodía de una sola nota a la vez.</div>
+  <div class="small">Extracción monofónica aproximada. Elegí qué información querés conservar en el análisis.</div>
+
+  <div class="analysis-options">
+    <label><input id="anPitch" type="checkbox" checked> Tono continuo / pitch bend</label>
+    <label><input id="anEvents" type="checkbox"> Pulsación + liberación + duración</label>
+    <label><input id="anVelocity" type="checkbox"> Velocity</label>
+  </div>
 
   <div class="midi-actions" style="margin-top:10px">
     <button id="analyzeBtn" class="primary" type="button" disabled>Analizar → MIDI</button>
@@ -117,6 +135,8 @@ audio{width:100%;margin-top:10px}
 const $=id=>document.getElementById(id);
 const fileInput=$('fileInput'),recordBtn=$('recordBtn'),stopBtn=$('stopBtn'),status=$('status'),player=$('player');
 const canvas=$('wave'),ctx=canvas.getContext('2d'),zoom=$('zoom'),offset=$('offset');
+const timeline=$('timeline'),playPauseBtn=$('playPauseBtn'),pauseBtn=$('pauseBtn');
+let cursorTime=0;
 let audioCtx=null,audioBuffer=null,mediaRecorder=null,chunks=[],stream=null,objectUrl=null;
 let midiFrames=[],midiNotes=[],scheduledNodes=[];
 function setStatus(t){status.textContent=t}
@@ -126,40 +146,62 @@ function clearCanvas(){
   ctx.strokeStyle='#ddd';
   ctx.beginPath();ctx.moveTo(0,canvas.height/2);ctx.lineTo(canvas.width,canvas.height/2);ctx.stroke();
 }
+function viewRange(){
+  if(!audioBuffer)return {start:0,end:1,dur:1};
+  const z=Number(zoom.value)||1;
+  const dur=audioBuffer.duration;
+  const visible=Math.max(.001,dur/z);
+  const maxStart=Math.max(0,dur-visible);
+  const start=Math.max(0,Math.min(maxStart,Number(offset.value)||0));
+  return {start,end:Math.min(dur,start+visible),dur:visible};
+}
+function drawCursorLine(c,x,start,end){
+  if(!audioBuffer || cursorTime<start || cursorTime>end)return;
+  const px=(cursorTime-start)/Math.max(.001,end-start)*c.width;
+  x.save();x.strokeStyle='#d22';x.lineWidth=2;x.beginPath();x.moveTo(px,0);x.lineTo(px,c.height);x.stroke();x.restore();
+}
+function syncOffsetToCursor(){
+  if(!audioBuffer)return;
+  const z=Number(zoom.value)||1,dur=audioBuffer.duration,visible=dur/z,maxStart=Math.max(0,dur-visible);
+  let start=cursorTime-visible/2;
+  start=Math.max(0,Math.min(maxStart,start));
+  offset.value=String(start);
+}
+function setCursor(t,seekPlayer=true,center=false){
+  if(!audioBuffer)return;
+  cursorTime=Math.max(0,Math.min(audioBuffer.duration,Number(t)||0));
+  timeline.value=String(cursorTime);
+  $('timelineVal').textContent=cursorTime.toFixed(3)+' s';
+  if(seekPlayer && Number.isFinite(player.duration))player.currentTime=cursorTime;
+  if(center)syncOffsetToCursor();
+  drawWave();drawPitch();
+}
 function drawWave(){
   clearCanvas();
   if(!audioBuffer)return;
-  const z=Number(zoom.value)||1;
-  const total=audioBuffer.length;
-  const visible=Math.max(1,Math.floor(total/z));
-  const maxStart=Math.max(0,total-visible);
-  offset.max=String(maxStart/audioBuffer.sampleRate);
-  offset.disabled=maxStart===0;
-  let start=Math.min(maxStart,Math.floor((Number(offset.value)||0)*audioBuffer.sampleRate));
-  if(start<0)start=0;
-  const end=Math.min(total,start+visible);
-  const data=audioBuffer.getChannelData(0);
+  const {start,end}=viewRange();
+  const data=audioBuffer.getChannelData(0),sr=audioBuffer.sampleRate;
+  const a0=Math.floor(start*sr),a1=Math.min(data.length,Math.ceil(end*sr));
   const w=canvas.width,h=canvas.height,mid=h/2;
-  const samplesPerPixel=Math.max(1,(end-start)/w);
+  const samplesPerPixel=Math.max(1,(a1-a0)/w);
   ctx.strokeStyle='#111';ctx.lineWidth=1;ctx.beginPath();
   for(let x=0;x<w;x++){
-    const a=Math.floor(start+x*samplesPerPixel);
-    const b=Math.min(end,Math.floor(a+samplesPerPixel));
+    const a=Math.floor(a0+x*samplesPerPixel);
+    const b=Math.min(a1,Math.max(a+1,Math.floor(a+samplesPerPixel)));
     let mn=1,mx=-1;
     for(let i=a;i<b;i++){const v=data[i];if(v<mn)mn=v;if(v>mx)mx=v}
     const y1=mid-mx*(h*.44),y2=mid-mn*(h*.44);
     ctx.moveTo(x,y1);ctx.lineTo(x,y2);
   }
   ctx.stroke();
-  const dur=(end-start)/audioBuffer.sampleRate;
   ctx.fillStyle='#555';ctx.font='14px system-ui';
   for(let i=0;i<=5;i++){
-    const t=start/audioBuffer.sampleRate+dur*i/5;
-    const x=w*i/5;
+    const t=start+(end-start)*i/5,x=w*i/5;
     ctx.fillText(t.toFixed(3)+' s',Math.min(w-62,x+4),h-8);
   }
-  $('zoomVal').textContent=z+'×';
-  $('offsetVal').textContent=(start/audioBuffer.sampleRate).toFixed(3)+' s';
+  drawCursorLine(canvas,ctx,start,end);
+  $('zoomVal').textContent=(Number(zoom.value)||1)+'×';
+  $('offsetVal').textContent=start.toFixed(3)+' s';
 }
 async function decodeBlob(blob,name='audio'){
   try{
@@ -179,6 +221,14 @@ async function decodeBlob(blob,name='audio'){
     $('channels').textContent=audioBuffer.numberOfChannels;
     $('peak').textContent=peak.toFixed(3);
     offset.value='0';
+    offset.max=String(audioBuffer.duration);
+    timeline.max=String(audioBuffer.duration);
+    timeline.value='0';
+    timeline.disabled=false;
+    playPauseBtn.disabled=false;
+    pauseBtn.disabled=false;
+    cursorTime=0;
+    $('timelineVal').textContent='0.000 s';
     drawWave();
     midiFrames=[];midiNotes=[];
     $('analyzeBtn').disabled=false;
@@ -194,8 +244,20 @@ async function decodeBlob(blob,name='audio'){
   }
 }
 fileInput.addEventListener('change',()=>{const f=fileInput.files&&fileInput.files[0];if(f)decodeBlob(f,f.name)});
-zoom.addEventListener('input',()=>{offset.value='0';drawWave()});
-offset.addEventListener('input',drawWave);
+zoom.addEventListener('input',()=>{syncOffsetToCursor();drawWave();drawPitch()});
+offset.addEventListener('input',()=>{drawWave();drawPitch()});
+timeline.addEventListener('input',()=>setCursor(Number(timeline.value),true,false));
+playPauseBtn.addEventListener('click',async()=>{if(!player.src)return;player.currentTime=cursorTime;await player.play()});
+pauseBtn.addEventListener('click',()=>player.pause());
+player.addEventListener('timeupdate',()=>{if(!audioBuffer)return;cursorTime=player.currentTime;timeline.value=String(cursorTime);$('timelineVal').textContent=cursorTime.toFixed(3)+' s';drawWave();drawPitch()});
+player.addEventListener('ended',()=>{cursorTime=0;timeline.value='0';$('timelineVal').textContent='0.000 s';drawWave();drawPitch()});
+function seekFromCanvas(c,e){
+  if(!audioBuffer)return;
+  const r=c.getBoundingClientRect(),ratio=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),vr=viewRange();
+  setCursor(vr.start+ratio*(vr.end-vr.start),true,false);
+}
+canvas.addEventListener('pointerdown',e=>seekFromCanvas(canvas,e));
+$('pitch').addEventListener('pointerdown',e=>seekFromCanvas($('pitch'),e));
 recordBtn.addEventListener('click',async()=>{
   if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder){
     setStatus('Este navegador no permite grabación directa. Podés cargar un archivo de audio.');
@@ -288,7 +350,7 @@ function smoothMidi(frames){
     if(vals.length>=2)frames[i].midiFloat=median(vals);
   }
 }
-function buildNotes(frames,hopSeconds){
+function buildNotes(frames,hopSeconds,useVelocity){
   const notes=[];let current=null;
   for(const f of frames){
     if(!Number.isFinite(f.midiFloat)){
@@ -313,7 +375,7 @@ function buildNotes(frames,hopSeconds){
   if(current)notes.push(current);
   return notes.filter(n=>n.end-n.start>=0.035).map(n=>{
     const rms=median(n.frames.map(f=>f.rms));
-    const velocity=Math.max(1,Math.min(127,Math.round(18+109*Math.min(1,rms/0.22))));
+    const velocity=useVelocity?Math.max(1,Math.min(127,Math.round(18+109*Math.min(1,rms/0.22)))):90;
     const bends=n.frames.map(f=>({time:f.time,cents:(f.midiFloat-n.note)*100,freq:f.freq}));
     const bendMean=median(bends.map(b=>b.cents));
     return {...n,duration:n.end-n.start,velocity,bends,bendMean};
@@ -321,14 +383,14 @@ function buildNotes(frames,hopSeconds){
 }
 function drawPitch(){
   clearPitch();
-  if(!midiFrames.length)return;
+  if(!midiFrames.length || !audioBuffer)return;
   const c=$('pitch'),x=c.getContext('2d'),w=c.width,h=c.height,pad=34;
-  const voiced=midiFrames.filter(f=>Number.isFinite(f.midiFloat));
-  if(!voiced.length)return;
-  const minM=Math.floor(Math.min(...voiced.map(f=>f.midiFloat)))-1;
-  const maxM=Math.ceil(Math.max(...voiced.map(f=>f.midiFloat)))+1;
-  const dur=Math.max(...midiFrames.map(f=>f.time),0.001);
-  const px=t=>pad+(w-2*pad)*t/dur;
+  const vr=viewRange();
+  const visible=midiFrames.filter(f=>f.time>=vr.start&&f.time<=vr.end&&Number.isFinite(f.midiFloat));
+  if(!visible.length){drawCursorLine(c,x,vr.start,vr.end);return}
+  const minM=Math.floor(Math.min(...visible.map(f=>f.midiFloat)))-1;
+  const maxM=Math.ceil(Math.max(...visible.map(f=>f.midiFloat)))+1;
+  const px=t=>pad+(w-2*pad)*(t-vr.start)/Math.max(.001,vr.end-vr.start);
   const py=m=>h-pad-(h-2*pad)*(m-minM)/Math.max(1,maxM-minM);
   x.strokeStyle='#eee';
   for(let m=minM;m<=maxM;m++){
@@ -338,11 +400,13 @@ function drawPitch(){
   x.strokeStyle='#111';x.lineWidth=1.5;x.beginPath();
   let open=false;
   for(const f of midiFrames){
+    if(f.time<vr.start||f.time>vr.end)continue;
     if(!Number.isFinite(f.midiFloat)){open=false;continue}
     const xx=px(f.time),yy=py(f.midiFloat);
     if(!open){x.moveTo(xx,yy);open=true}else x.lineTo(xx,yy);
   }
   x.stroke();
+  drawCursorLine(c,x,vr.start,vr.end);
 }
 function renderMidiTable(){
   const body=$('midiBody');
@@ -358,31 +422,34 @@ function renderMidiTable(){
 }
 async function analyzeMidi(){
   if(!audioBuffer)return;
+  const usePitch=$('anPitch').checked,useEvents=$('anEvents').checked,useVelocity=$('anVelocity').checked;
+  if(!usePitch){
+    $('midiStatus').textContent='Activá “Tono continuo / pitch bend” para iniciar el análisis.';
+    return;
+  }
   $('analyzeBtn').disabled=true;
-  $('midiStatus').textContent='Analizando pitch…';
+  $('midiStatus').textContent=useEvents?'Analizando tono y eventos…':'Analizando solo tono…';
   await new Promise(r=>setTimeout(r,20));
   const {data,sr}=makeMonoDownsample(audioBuffer,12000,30);
   const frameSize=512,hop=128,hopSeconds=hop/sr;
   const frames=[];
   for(let start=0;start+frameSize<data.length;start+=hop){
-    const frame=data.subarray(start,start+frameSize);
-    const p=estimatePitch(frame,sr);
-    const time=(start+frameSize/2)/sr;
+    const frame=data.subarray(start,start+frameSize),p=estimatePitch(frame,sr),time=(start+frameSize/2)/sr;
     if(p.freq>0){
       const midiFloat=69+12*Math.log2(p.freq/440);
       if(midiFloat>=24&&midiFloat<=108)frames.push({time,freq:p.freq,rms:p.rms,corr:p.corr,midiFloat});
       else frames.push({time,freq:0,rms:p.rms,corr:p.corr,midiFloat:NaN});
     }else frames.push({time,freq:0,rms:p.rms,corr:p.corr,midiFloat:NaN});
   }
-  smoothMidi(frames);
-  midiFrames=frames;
-  midiNotes=buildNotes(frames,hopSeconds);
+  smoothMidi(frames);midiFrames=frames;
+  midiNotes=useEvents?buildNotes(frames,hopSeconds,useVelocity):[];
   drawPitch();renderMidiTable();
-  $('playMidiBtn').disabled=!midiNotes.length;
-  $('downloadMidiBtn').disabled=!midiNotes.length;
+  if(!useEvents)$('midiBody').innerHTML='<tr><td colspan="6" style="text-align:left;color:#666">Modo “solo tono”: no se segmentan note-on / note-off.</td></tr>';
+  $('playMidiBtn').disabled=!midiFrames.some(f=>Number.isFinite(f.midiFloat));
+  $('downloadMidiBtn').disabled=!useEvents||!midiNotes.length;
   $('analyzeBtn').disabled=false;
   const capped=audioBuffer.duration>30?' Se analizaron los primeros 30 s.':'';
-  $('midiStatus').textContent=midiNotes.length+' notas detectadas.'+capped;
+  $('midiStatus').textContent=useEvents?(midiNotes.length+' notas detectadas.'+capped):('Tono continuo detectado sin segmentación de notas.'+capped);
 }
 function stopSynth(){
   for(const n of scheduledNodes){try{n.stop()}catch(e){}}
@@ -409,7 +476,35 @@ function oscVoice(ac,dest,kind,freq,start,end,velocity,bends,mult=1,gainScale=1)
   }
   osc.start(start);osc.stop(end+release+.02);scheduledNodes.push(osc);
 }
+async function playPitchOnly(){
+  if(!midiFrames.length)return;
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  await audioCtx.resume();stopSynth();
+  const ac=audioCtx,kind=$('instrument').value,base=ac.currentTime+.06,frames=midiFrames.filter(f=>Number.isFinite(f.midiFloat));
+  if(!frames.length)return;
+  let groups=[],g=[];
+  for(const f of frames){
+    if(g.length && f.time-g[g.length-1].time>.05){groups.push(g);g=[]}
+    g.push(f);
+  }
+  if(g.length)groups.push(g);
+  for(const run of groups){
+    const start=base+run[0].time,end=base+run[run.length-1].time+.03;
+    const osc=ac.createOscillator(),gain=ac.createGain(),filter=ac.createBiquadFilter();
+    osc.connect(filter);filter.connect(gain);gain.connect(ac.destination);
+    if(kind==='sine')osc.type='sine';
+    if(kind==='flute'){osc.type='sine';filter.type='lowpass';filter.frequency.value=7000}
+    if(kind==='string'){osc.type='sawtooth';filter.type='lowpass';filter.frequency.value=1400}
+    if(kind==='clarinet'){osc.type='square';filter.type='lowpass';filter.frequency.value=2600}
+    gain.gain.setValueAtTime(.0001,start);gain.gain.linearRampToValueAtTime(.11,start+.02);
+    gain.gain.setValueAtTime(.11,Math.max(start+.02,end-.04));gain.gain.exponentialRampToValueAtTime(.0001,end+.04);
+    osc.frequency.setValueAtTime(run[0].freq,start);
+    for(const f of run)osc.frequency.linearRampToValueAtTime(f.freq,base+f.time);
+    osc.start(start);osc.stop(end+.05);scheduledNodes.push(osc);
+  }
+}
 async function playMidi(){
+  if(!$('anEvents').checked){await playPitchOnly();return}
   if(!midiNotes.length)return;
   if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
   await audioCtx.resume();stopSynth();
@@ -462,6 +557,9 @@ function downloadMidi(){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+$('anPitch').addEventListener('change',()=>{if(!$('anPitch').checked){$('anEvents').checked=false;$('anVelocity').checked=false}});
+$('anEvents').addEventListener('change',()=>{if($('anEvents').checked)$('anPitch').checked=true;if(!$('anEvents').checked)$('anVelocity').checked=false});
+$('anVelocity').addEventListener('change',()=>{if($('anVelocity').checked){$('anEvents').checked=true;$('anPitch').checked=true}});
 $('analyzeBtn').addEventListener('click',analyzeMidi);
 $('playMidiBtn').addEventListener('click',playMidi);
 $('downloadMidiBtn').addEventListener('click',downloadMidi);
