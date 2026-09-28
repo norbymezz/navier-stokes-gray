@@ -12,7 +12,16 @@ main{max-width:1000px;margin:auto}
 .card{background:#fff;border:1px solid #ccc;border-radius:12px;padding:14px;margin-bottom:12px}
 h1{font-size:1.5rem;margin:0 0 6px} h2{font-size:1.1rem;margin:0 0 10px}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-button,input{font:inherit}
+button,input,select{font:inherit}
+select{min-height:44px;padding:8px;border:1px solid #aaa;border-radius:8px;background:#fff}
+.midi-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end}
+.table-wrap{max-height:340px;overflow:auto;border:1px solid #ddd;border-radius:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px;border-bottom:1px solid #e5e5e5;text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{position:sticky;top:0;background:#fafafa}
+.pitch-canvas{height:240px}
+.note-pill{display:inline-block;padding:2px 6px;border-radius:999px;background:#f0f0f0}
 button{min-height:44px;padding:10px;border:1px solid #aaa;border-radius:8px;background:#fff;cursor:pointer}
 button.primary{background:#111;color:#fff;border-color:#111}
 button:disabled{opacity:.45;cursor:not-allowed}
@@ -24,7 +33,7 @@ canvas{width:100%;height:320px;border:1px solid #ddd;background:#fff;display:blo
 audio{width:100%;margin-top:10px}
 .range-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin-top:10px}
 .small{font-size:12px;color:#666}
-@media(max-width:700px){.controls,.meta{grid-template-columns:1fr}.range-row{grid-template-columns:1fr}.range-row span:last-child{text-align:right}canvas{height:240px}}
+@media(max-width:700px){.controls,.meta,.midi-actions{grid-template-columns:1fr}.range-row{grid-template-columns:1fr}.range-row span:last-child{text-align:right}canvas{height:240px}.pitch-canvas{height:210px}.table-wrap{max-height:300px}}
 </style>
 </head>
 <body>
@@ -69,12 +78,47 @@ audio{width:100%;margin-top:10px}
     <div><strong>Pico</strong><br><span id="peak">—</span></div>
   </div>
 </div>
+
+<div class="card">
+  <h2>Audio → secuencia MIDI</h2>
+  <div class="small">Extracción monofónica aproximada: nota (note-on/note-off), duración, velocidad y pitch bend. Está pensada para voz, silbido o una melodía de una sola nota a la vez.</div>
+
+  <div class="midi-actions" style="margin-top:10px">
+    <button id="analyzeBtn" class="primary" type="button" disabled>Analizar → MIDI</button>
+    <div>
+      <label for="instrument"><strong>Sonido</strong></label>
+      <select id="instrument">
+        <option value="sine">Seno puro</option>
+        <option value="flute">Flauta</option>
+        <option value="string">Cuerda</option>
+        <option value="clarinet">Clarinete</option>
+      </select>
+    </div>
+    <button id="playMidiBtn" type="button" disabled>▶ Ejecutar MIDI</button>
+    <button id="downloadMidiBtn" type="button" disabled>↓ Descargar .mid</button>
+  </div>
+
+  <div id="midiStatus" class="status" aria-live="polite">Todavía no hay análisis MIDI.</div>
+
+  <h3 style="font-size:1rem;margin:14px 0 8px">Pitch / bend detectado</h3>
+  <canvas id="pitch" class="pitch-canvas" width="1200" height="300" aria-label="Pitch detectado y pitch bend"></canvas>
+
+  <h3 style="font-size:1rem;margin:14px 0 8px">Eventos</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nota</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Velocity</th><th>Bend medio</th></tr></thead>
+      <tbody id="midiBody"><tr><td colspan="6" style="text-align:left;color:#666">Sin eventos.</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
 </main>
 <script>
 const $=id=>document.getElementById(id);
 const fileInput=$('fileInput'),recordBtn=$('recordBtn'),stopBtn=$('stopBtn'),status=$('status'),player=$('player');
 const canvas=$('wave'),ctx=canvas.getContext('2d'),zoom=$('zoom'),offset=$('offset');
 let audioCtx=null,audioBuffer=null,mediaRecorder=null,chunks=[],stream=null,objectUrl=null;
+let midiFrames=[],midiNotes=[],scheduledNodes=[];
 function setStatus(t){status.textContent=t}
 function clearCanvas(){
   ctx.setTransform(1,0,0,1,0,0);
@@ -136,6 +180,13 @@ async function decodeBlob(blob,name='audio'){
     $('peak').textContent=peak.toFixed(3);
     offset.value='0';
     drawWave();
+    midiFrames=[];midiNotes=[];
+    $('analyzeBtn').disabled=false;
+    $('playMidiBtn').disabled=true;
+    $('downloadMidiBtn').disabled=true;
+    $('midiBody').innerHTML='<tr><td colspan="6" style="text-align:left;color:#666">Sin eventos.</td></tr>';
+    clearPitch();
+    $('midiStatus').textContent='Audio cargado. Tocá “Analizar → MIDI”.';
     setStatus('Listo: '+name);
   }catch(e){
     console.error(e);
@@ -172,6 +223,249 @@ recordBtn.addEventListener('click',async()=>{
   }
 });
 stopBtn.addEventListener('click',()=>{if(mediaRecorder&&mediaRecorder.state!=='inactive')mediaRecorder.stop()});
+function clearPitch(){
+  const c=$('pitch'),x=c.getContext('2d');
+  x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,c.width,c.height);
+  x.strokeStyle='#ddd';x.beginPath();x.moveTo(0,c.height-28);x.lineTo(c.width,c.height-28);x.stroke();
+}
+
+function noteName(n){
+  const names=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+  return names[((n%12)+12)%12]+(Math.floor(n/12)-1);
+}
+function median(values){
+  if(!values.length)return 0;
+  const a=[...values].sort((x,y)=>x-y),m=Math.floor(a.length/2);
+  return a.length%2?a[m]:(a[m-1]+a[m])/2;
+}
+function estimatePitch(frame,sr){
+  let mean=0,rms=0;
+  for(let i=0;i<frame.length;i++){mean+=frame[i];rms+=frame[i]*frame[i]}
+  mean/=frame.length;rms=Math.sqrt(rms/frame.length);
+  if(rms<0.012)return {freq:0,rms,corr:0};
+  const minLag=Math.max(2,Math.floor(sr/1000));
+  const maxLag=Math.min(frame.length-3,Math.floor(sr/70));
+  let bestLag=0,best=-1;
+  const scores=new Float32Array(maxLag+1);
+  for(let lag=minLag;lag<=maxLag;lag++){
+    let num=0,a2=0,b2=0;
+    const end=frame.length-lag;
+    for(let i=0;i<end;i+=2){
+      const a=frame[i]-mean,b=frame[i+lag]-mean;
+      num+=a*b;a2+=a*a;b2+=b*b;
+    }
+    const s=num/Math.sqrt((a2*b2)||1);
+    scores[lag]=s;
+    if(s>best){best=s;bestLag=lag}
+  }
+  if(best<0.48 || !bestLag)return {freq:0,rms,corr:best};
+  let lag=bestLag;
+  if(bestLag>minLag && bestLag<maxLag){
+    const y1=scores[bestLag-1],y2=scores[bestLag],y3=scores[bestLag+1];
+    const den=2*(2*y2-y1-y3);
+    if(Math.abs(den)>1e-9)lag=bestLag+(y3-y1)/den;
+  }
+  return {freq:sr/lag,rms,corr:best};
+}
+function makeMonoDownsample(buffer,targetRate=12000,maxSeconds=30){
+  const sr=buffer.sampleRate;
+  const step=Math.max(1,Math.floor(sr/targetRate));
+  const outRate=sr/step;
+  const maxIn=Math.min(buffer.length,Math.floor(maxSeconds*sr));
+  const len=Math.floor(maxIn/step);
+  const out=new Float32Array(len);
+  for(let i=0;i<len;i++){
+    const src=i*step;let v=0;
+    for(let c=0;c<buffer.numberOfChannels;c++)v+=buffer.getChannelData(c)[src]||0;
+    out[i]=v/buffer.numberOfChannels;
+  }
+  return {data:out,sr:outRate};
+}
+function smoothMidi(frames){
+  const voiced=frames.map(f=>f.midiFloat);
+  for(let i=1;i<frames.length-1;i++){
+    const vals=[voiced[i-1],voiced[i],voiced[i+1]].filter(Number.isFinite);
+    if(vals.length>=2)frames[i].midiFloat=median(vals);
+  }
+}
+function buildNotes(frames,hopSeconds){
+  const notes=[];let current=null;
+  for(const f of frames){
+    if(!Number.isFinite(f.midiFloat)){
+      if(current){
+        current.silent=(current.silent||0)+1;
+        if(current.silent>=2){current.end=f.time;notes.push(current);current=null}
+      }
+      continue;
+    }
+    const n=Math.round(f.midiFloat);
+    if(!current){
+      current={note:n,start:f.time,end:f.time+hopSeconds,frames:[f],silent:0};
+      continue;
+    }
+    if(n===current.note || Math.abs(f.midiFloat-current.note)<0.72){
+      current.frames.push(f);current.end=f.time+hopSeconds;current.silent=0;
+    }else{
+      current.end=f.time;notes.push(current);
+      current={note:n,start:f.time,end:f.time+hopSeconds,frames:[f],silent:0};
+    }
+  }
+  if(current)notes.push(current);
+  return notes.filter(n=>n.end-n.start>=0.035).map(n=>{
+    const rms=median(n.frames.map(f=>f.rms));
+    const velocity=Math.max(1,Math.min(127,Math.round(18+109*Math.min(1,rms/0.22))));
+    const bends=n.frames.map(f=>({time:f.time,cents:(f.midiFloat-n.note)*100,freq:f.freq}));
+    const bendMean=median(bends.map(b=>b.cents));
+    return {...n,duration:n.end-n.start,velocity,bends,bendMean};
+  });
+}
+function drawPitch(){
+  clearPitch();
+  if(!midiFrames.length)return;
+  const c=$('pitch'),x=c.getContext('2d'),w=c.width,h=c.height,pad=34;
+  const voiced=midiFrames.filter(f=>Number.isFinite(f.midiFloat));
+  if(!voiced.length)return;
+  const minM=Math.floor(Math.min(...voiced.map(f=>f.midiFloat)))-1;
+  const maxM=Math.ceil(Math.max(...voiced.map(f=>f.midiFloat)))+1;
+  const dur=Math.max(...midiFrames.map(f=>f.time),0.001);
+  const px=t=>pad+(w-2*pad)*t/dur;
+  const py=m=>h-pad-(h-2*pad)*(m-minM)/Math.max(1,maxM-minM);
+  x.strokeStyle='#eee';
+  for(let m=minM;m<=maxM;m++){
+    const y=py(m);x.beginPath();x.moveTo(pad,y);x.lineTo(w-pad,y);x.stroke();
+    x.fillStyle='#777';x.font='12px system-ui';x.fillText(noteName(m),4,y+4);
+  }
+  x.strokeStyle='#111';x.lineWidth=1.5;x.beginPath();
+  let open=false;
+  for(const f of midiFrames){
+    if(!Number.isFinite(f.midiFloat)){open=false;continue}
+    const xx=px(f.time),yy=py(f.midiFloat);
+    if(!open){x.moveTo(xx,yy);open=true}else x.lineTo(xx,yy);
+  }
+  x.stroke();
+}
+function renderMidiTable(){
+  const body=$('midiBody');
+  if(!midiNotes.length){body.innerHTML='<tr><td colspan="6" style="text-align:left;color:#666">No se detectaron notas estables.</td></tr>';return}
+  body.innerHTML=midiNotes.map(n=>'<tr>'+
+    '<td><span class="note-pill">'+noteName(n.note)+' · '+n.note+'</span></td>'+
+    '<td>'+n.start.toFixed(3)+' s</td>'+
+    '<td>'+n.end.toFixed(3)+' s</td>'+
+    '<td>'+n.duration.toFixed(3)+' s</td>'+
+    '<td>'+n.velocity+'</td>'+
+    '<td>'+((n.bendMean>=0?'+':'')+n.bendMean.toFixed(1))+' ¢</td>'+
+  '</tr>').join('');
+}
+async function analyzeMidi(){
+  if(!audioBuffer)return;
+  $('analyzeBtn').disabled=true;
+  $('midiStatus').textContent='Analizando pitch…';
+  await new Promise(r=>setTimeout(r,20));
+  const {data,sr}=makeMonoDownsample(audioBuffer,12000,30);
+  const frameSize=512,hop=128,hopSeconds=hop/sr;
+  const frames=[];
+  for(let start=0;start+frameSize<data.length;start+=hop){
+    const frame=data.subarray(start,start+frameSize);
+    const p=estimatePitch(frame,sr);
+    const time=(start+frameSize/2)/sr;
+    if(p.freq>0){
+      const midiFloat=69+12*Math.log2(p.freq/440);
+      if(midiFloat>=24&&midiFloat<=108)frames.push({time,freq:p.freq,rms:p.rms,corr:p.corr,midiFloat});
+      else frames.push({time,freq:0,rms:p.rms,corr:p.corr,midiFloat:NaN});
+    }else frames.push({time,freq:0,rms:p.rms,corr:p.corr,midiFloat:NaN});
+  }
+  smoothMidi(frames);
+  midiFrames=frames;
+  midiNotes=buildNotes(frames,hopSeconds);
+  drawPitch();renderMidiTable();
+  $('playMidiBtn').disabled=!midiNotes.length;
+  $('downloadMidiBtn').disabled=!midiNotes.length;
+  $('analyzeBtn').disabled=false;
+  const capped=audioBuffer.duration>30?' Se analizaron los primeros 30 s.':'';
+  $('midiStatus').textContent=midiNotes.length+' notas detectadas.'+capped;
+}
+function stopSynth(){
+  for(const n of scheduledNodes){try{n.stop()}catch(e){}}
+  scheduledNodes=[];
+}
+function oscVoice(ac,dest,kind,freq,start,end,velocity,bends,mult=1,gainScale=1){
+  const osc=ac.createOscillator(),g=ac.createGain(),filter=ac.createBiquadFilter();
+  osc.connect(filter);filter.connect(g);g.connect(dest);
+  let attack=.008,release=.04;
+  if(kind==='sine'){osc.type='sine';filter.type='allpass'}
+  if(kind==='flute'){osc.type=mult===1?'sine':'triangle';filter.type='lowpass';filter.frequency.value=7000;attack=.035;release=.08}
+  if(kind==='string'){osc.type='sawtooth';filter.type='lowpass';filter.frequency.setValueAtTime(3500,start);filter.frequency.exponentialRampToValueAtTime(900,Math.min(end,start+.35));attack=.004;release=.12}
+  if(kind==='clarinet'){osc.type='square';filter.type='lowpass';filter.frequency.value=2600;attack=.018;release=.07}
+  const amp=Math.max(.005,(velocity/127)*.13*gainScale);
+  g.gain.setValueAtTime(.0001,start);
+  g.gain.linearRampToValueAtTime(amp,start+attack);
+  if(kind==='string')g.gain.exponentialRampToValueAtTime(Math.max(.0002,amp*.42),Math.max(start+attack+.01,end-.08));
+  else g.gain.setValueAtTime(amp,Math.max(start+attack,end-release));
+  g.gain.exponentialRampToValueAtTime(.0001,end+release);
+  osc.frequency.setValueAtTime(freq*mult,start);
+  for(const b of bends){
+    const t=start+(b.time-bends[0].time);
+    if(t<=end)osc.frequency.linearRampToValueAtTime(b.freq*mult,t);
+  }
+  osc.start(start);osc.stop(end+release+.02);scheduledNodes.push(osc);
+}
+async function playMidi(){
+  if(!midiNotes.length)return;
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  await audioCtx.resume();stopSynth();
+  const ac=audioCtx,dest=ac.destination,kind=$('instrument').value,base=ac.currentTime+.06;
+  for(const n of midiNotes){
+    const start=base+n.start,end=base+n.end,freq=440*Math.pow(2,(n.note-69)/12);
+    if(kind==='flute'){
+      oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,1,1);
+      oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,2,.16);
+    }else oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,1,1);
+  }
+}
+function varLen(v){
+  let buffer=v&0x7F,out=[];
+  while((v>>=7)){buffer<<=8;buffer|=((v&0x7F)|0x80)}
+  while(true){out.push(buffer&0xFF);if(buffer&0x80)buffer>>=8;else break}
+  return out;
+}
+function push32(a,v){a.push((v>>>24)&255,(v>>>16)&255,(v>>>8)&255,v&255)}
+function buildMidiFile(){
+  const ppq=480,ticksPerSec=960,events=[];
+  const programMap={sine:0,flute:73,string:48,clarinet:71};
+  events.push({t:0,b:[0xFF,0x51,0x03,0x07,0xA1,0x20]});
+  events.push({t:0,b:[0xC0,programMap[$('instrument').value]||0]});
+  events.push({t:0,b:[0xB0,101,0,0xB0,100,0,0xB0,6,2,0xB0,38,0]});
+  for(const n of midiNotes){
+    const on=Math.max(0,Math.round(n.start*ticksPerSec));
+    const off=Math.max(on+1,Math.round(n.end*ticksPerSec));
+    events.push({t:on,b:[0x90,n.note&127,n.velocity&127]});
+    for(let i=0;i<n.bends.length;i+=2){
+      const b=n.bends[i];
+      const tick=Math.round(b.time*ticksPerSec);
+      const raw=Math.max(0,Math.min(16383,Math.round(8192+(b.cents/200)*8192)));
+      events.push({t:tick,b:[0xE0,raw&127,(raw>>7)&127]});
+    }
+    events.push({t:off,b:[0x80,n.note&127,0]});
+    events.push({t:off,b:[0xE0,0,64]});
+  }
+  events.sort((a,b)=>a.t-b.t);
+  const track=[];let last=0;
+  for(const e of events){track.push(...varLen(e.t-last),...e.b);last=e.t}
+  track.push(0,0xFF,0x2F,0);
+  const out=[0x4D,0x54,0x68,0x64,0,0,0,6,0,0,0,1,(ppq>>8)&255,ppq&255,0x4D,0x54,0x72,0x6B];
+  push32(out,track.length);out.push(...track);
+  return new Uint8Array(out);
+}
+function downloadMidi(){
+  const bytes=buildMidiFile(),blob=new Blob([bytes],{type:'audio/midi'}),url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='audio-lab.mid';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+$('analyzeBtn').addEventListener('click',analyzeMidi);
+$('playMidiBtn').addEventListener('click',playMidi);
+$('downloadMidiBtn').addEventListener('click',downloadMidi);
+clearPitch();
 clearCanvas();
 </script>
 </body>
