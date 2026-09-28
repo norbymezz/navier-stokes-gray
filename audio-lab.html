@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audio Lab — Navier–Stokes Gray</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#111;background:#f5f5f5}
+*{box-sizing:border-box}
+body{margin:0;padding:14px}
+main{max-width:1000px;margin:auto}
+.card{background:#fff;border:1px solid #ccc;border-radius:12px;padding:14px;margin-bottom:12px}
+h1{font-size:1.5rem;margin:0 0 6px} h2{font-size:1.1rem;margin:0 0 10px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button,input{font:inherit}
+button{min-height:44px;padding:10px;border:1px solid #aaa;border-radius:8px;background:#fff;cursor:pointer}
+button.primary{background:#111;color:#fff;border-color:#111}
+button:disabled{opacity:.45;cursor:not-allowed}
+input[type=file]{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;background:#fff}
+canvas{width:100%;height:320px;border:1px solid #ddd;background:#fff;display:block;touch-action:pan-y}
+.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.meta div{background:#f7f7f7;border:1px solid #ddd;border-radius:8px;padding:8px;font-size:13px}
+.status{font-size:14px;color:#555;margin-top:8px}
+audio{width:100%;margin-top:10px}
+.range-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin-top:10px}
+.small{font-size:12px;color:#666}
+@media(max-width:700px){.controls,.meta{grid-template-columns:1fr}.range-row{grid-template-columns:1fr}.range-row span:last-child{text-align:right}canvas{height:240px}}
+</style>
+</head>
+<body>
+<main>
+<div class="card">
+  <a href="./" style="color:#111;text-decoration:none">← Volver al explorador</a>
+  <h1>Audio Lab</h1>
+  <div class="small">Cargar un archivo o grabar con el micrófono y ver amplitud vs. tiempo.</div>
+</div>
+<div class="card">
+  <h2>Entrada</h2>
+  <div class="controls">
+    <div>
+      <label for="fileInput"><strong>Archivo de audio</strong></label>
+      <input id="fileInput" type="file" accept="audio/*">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end">
+      <button id="recordBtn" class="primary" type="button">● Grabar</button>
+      <button id="stopBtn" type="button" disabled>■ Detener</button>
+    </div>
+  </div>
+  <div id="status" class="status" aria-live="polite">Esperando audio.</div>
+  <audio id="player" controls></audio>
+</div>
+<div class="card">
+  <h2>Amplitud vs. tiempo</h2>
+  <canvas id="wave" width="1200" height="360" aria-label="Forma de onda"></canvas>
+  <div class="range-row">
+    <span>Zoom</span>
+    <input id="zoom" type="range" min="1" max="20" step="1" value="1">
+    <span id="zoomVal">1×</span>
+  </div>
+  <div class="range-row">
+    <span>Inicio</span>
+    <input id="offset" type="range" min="0" max="0" step="0.001" value="0" disabled>
+    <span id="offsetVal">0.000 s</span>
+  </div>
+  <div class="meta">
+    <div><strong>Duración</strong><br><span id="duration">—</span></div>
+    <div><strong>Frecuencia</strong><br><span id="sampleRate">—</span></div>
+    <div><strong>Canales</strong><br><span id="channels">—</span></div>
+    <div><strong>Pico</strong><br><span id="peak">—</span></div>
+  </div>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const fileInput=$('fileInput'),recordBtn=$('recordBtn'),stopBtn=$('stopBtn'),status=$('status'),player=$('player');
+const canvas=$('wave'),ctx=canvas.getContext('2d'),zoom=$('zoom'),offset=$('offset');
+let audioCtx=null,audioBuffer=null,mediaRecorder=null,chunks=[],stream=null,objectUrl=null;
+function setStatus(t){status.textContent=t}
+function clearCanvas(){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='#ddd';
+  ctx.beginPath();ctx.moveTo(0,canvas.height/2);ctx.lineTo(canvas.width,canvas.height/2);ctx.stroke();
+}
+function drawWave(){
+  clearCanvas();
+  if(!audioBuffer)return;
+  const z=Number(zoom.value)||1;
+  const total=audioBuffer.length;
+  const visible=Math.max(1,Math.floor(total/z));
+  const maxStart=Math.max(0,total-visible);
+  offset.max=String(maxStart/audioBuffer.sampleRate);
+  offset.disabled=maxStart===0;
+  let start=Math.min(maxStart,Math.floor((Number(offset.value)||0)*audioBuffer.sampleRate));
+  if(start<0)start=0;
+  const end=Math.min(total,start+visible);
+  const data=audioBuffer.getChannelData(0);
+  const w=canvas.width,h=canvas.height,mid=h/2;
+  const samplesPerPixel=Math.max(1,(end-start)/w);
+  ctx.strokeStyle='#111';ctx.lineWidth=1;ctx.beginPath();
+  for(let x=0;x<w;x++){
+    const a=Math.floor(start+x*samplesPerPixel);
+    const b=Math.min(end,Math.floor(a+samplesPerPixel));
+    let mn=1,mx=-1;
+    for(let i=a;i<b;i++){const v=data[i];if(v<mn)mn=v;if(v>mx)mx=v}
+    const y1=mid-mx*(h*.44),y2=mid-mn*(h*.44);
+    ctx.moveTo(x,y1);ctx.lineTo(x,y2);
+  }
+  ctx.stroke();
+  const dur=(end-start)/audioBuffer.sampleRate;
+  ctx.fillStyle='#555';ctx.font='14px system-ui';
+  for(let i=0;i<=5;i++){
+    const t=start/audioBuffer.sampleRate+dur*i/5;
+    const x=w*i/5;
+    ctx.fillText(t.toFixed(3)+' s',Math.min(w-62,x+4),h-8);
+  }
+  $('zoomVal').textContent=z+'×';
+  $('offsetVal').textContent=(start/audioBuffer.sampleRate).toFixed(3)+' s';
+}
+async function decodeBlob(blob,name='audio'){
+  try{
+    if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const ab=await blob.arrayBuffer();
+    audioBuffer=await audioCtx.decodeAudioData(ab.slice(0));
+    if(objectUrl)URL.revokeObjectURL(objectUrl);
+    objectUrl=URL.createObjectURL(blob);
+    player.src=objectUrl;
+    let peak=0;
+    for(let c=0;c<audioBuffer.numberOfChannels;c++){
+      const d=audioBuffer.getChannelData(c);
+      for(let i=0;i<d.length;i++){const a=Math.abs(d[i]);if(a>peak)peak=a}
+    }
+    $('duration').textContent=audioBuffer.duration.toFixed(3)+' s';
+    $('sampleRate').textContent=audioBuffer.sampleRate+' Hz';
+    $('channels').textContent=audioBuffer.numberOfChannels;
+    $('peak').textContent=peak.toFixed(3);
+    offset.value='0';
+    drawWave();
+    setStatus('Listo: '+name);
+  }catch(e){
+    console.error(e);
+    setStatus('No se pudo decodificar este audio en el navegador.');
+  }
+}
+fileInput.addEventListener('change',()=>{const f=fileInput.files&&fileInput.files[0];if(f)decodeBlob(f,f.name)});
+zoom.addEventListener('input',()=>{offset.value='0';drawWave()});
+offset.addEventListener('input',drawWave);
+recordBtn.addEventListener('click',async()=>{
+  if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder){
+    setStatus('Este navegador no permite grabación directa. Podés cargar un archivo de audio.');
+    return;
+  }
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    chunks=[];
+    mediaRecorder=new MediaRecorder(stream);
+    mediaRecorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+    mediaRecorder.onstop=()=>{
+      const type=mediaRecorder.mimeType||'audio/webm';
+      const blob=new Blob(chunks,{type});
+      if(stream)stream.getTracks().forEach(t=>t.stop());
+      stream=null;
+      recordBtn.disabled=false;stopBtn.disabled=true;
+      decodeBlob(blob,'grabación');
+    };
+    mediaRecorder.start();
+    recordBtn.disabled=true;stopBtn.disabled=false;
+    setStatus('Grabando… hablá y tocá Detener cuando termines.');
+  }catch(e){
+    console.error(e);
+    setStatus('No se pudo acceder al micrófono. Revisá el permiso del navegador.');
+  }
+});
+stopBtn.addEventListener('click',()=>{if(mediaRecorder&&mediaRecorder.state!=='inactive')mediaRecorder.stop()});
+clearCanvas();
+</script>
+</body>
+</html>
