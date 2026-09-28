@@ -38,7 +38,15 @@ audio{width:100%;margin-top:10px}
 .analysis-options{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fafafa}
 .analysis-options label{display:flex;align-items:center;gap:6px;font-size:14px}
 .analysis-options input{width:auto}
-@media(max-width:700px){.controls,.meta,.midi-actions{grid-template-columns:1fr}.range-row{grid-template-columns:1fr}.range-row span:last-child{text-align:right}.transport{grid-template-columns:1fr 1fr}.transport input{grid-column:1/-1}.transport span{grid-column:1/-1;text-align:right}canvas{height:240px}.pitch-canvas{height:210px}.table-wrap{max-height:300px}}
+.selection-box{margin-top:12px;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fafafa}
+.selection-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.analysis-result{display:none;margin-top:12px}
+.analysis-result.open{display:block}
+.analysis-split{display:grid;grid-template-columns:1.15fr .85fr;gap:12px;align-items:start}
+.selected-wave{height:220px}
+.note-row{cursor:pointer}
+.note-row.selected{background:#f2f2f2}
+@media(max-width:700px){.controls,.meta,.midi-actions,.selection-grid,.analysis-split{grid-template-columns:1fr}.range-row{grid-template-columns:1fr}.range-row span:last-child{text-align:right}.transport{grid-template-columns:1fr 1fr}.transport input{grid-column:1/-1}.transport span{grid-column:1/-1;text-align:right}canvas{height:240px}.pitch-canvas{height:210px}.selected-wave{height:190px}.table-wrap{max-height:300px}}
 </style>
 </head>
 <body>
@@ -73,6 +81,28 @@ audio{width:100%;margin-top:10px}
     <span id="timelineVal">0.000 s</span>
   </div>
   <div class="small">El cursor es común a las dos gráficas. Tocá cualquiera de ellas para seleccionar ese instante.</div>
+
+  <div class="selection-box">
+    <strong>Fragmento a analizar</strong>
+    <div class="selection-grid">
+      <div>
+        <label>Inicio</label>
+        <input id="selStart" type="range" min="0" max="0" step="0.001" value="0" disabled>
+        <div id="selStartVal" class="small">0.000 s</div>
+      </div>
+      <div>
+        <label>Fin</label>
+        <input id="selEnd" type="range" min="0" max="0" step="0.001" value="0" disabled>
+        <div id="selEndVal" class="small">0.000 s</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="markStartBtn" type="button" disabled>Usar cursor como inicio</button>
+      <button id="markEndBtn" type="button" disabled>Usar cursor como fin</button>
+      <button id="playSelectionBtn" type="button" disabled>▶ Escuchar fragmento</button>
+    </div>
+  </div>
+
   <div class="range-row">
     <span>Zoom</span>
     <input id="zoom" type="range" min="1" max="20" step="1" value="1">
@@ -120,17 +150,28 @@ audio{width:100%;margin-top:10px}
     <button id="downloadMidiBtn" type="button" disabled>↓ Descargar .mid</button>
   </div>
 
-  <div id="midiStatus" class="status" aria-live="polite">Todavía no hay análisis MIDI.</div>
+  <div id="midiStatus" class="status" aria-live="polite">Seleccioná un fragmento y analizalo.</div>
 
-  <h3 style="font-size:1rem;margin:14px 0 8px">Pitch / bend detectado</h3>
-  <canvas id="pitch" class="pitch-canvas" width="1200" height="300" aria-label="Pitch detectado y pitch bend"></canvas>
+  <div id="analysisResult" class="analysis-result">
+    <div class="analysis-split">
+      <div>
+        <h3 style="font-size:1rem;margin:14px 0 8px">Fragmento seleccionado</h3>
+        <canvas id="selectedWave" class="selected-wave" width="1200" height="260" aria-label="Fragmento seleccionado"></canvas>
 
-  <h3 style="font-size:1rem;margin:14px 0 8px">Eventos</h3>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Nota</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Velocity</th><th>Bend medio</th></tr></thead>
-      <tbody id="midiBody"><tr><td colspan="6" style="text-align:left;color:#666">Sin eventos.</td></tr></tbody>
-    </table>
+        <h3 style="font-size:1rem;margin:14px 0 8px">Pitch / bend detectado</h3>
+        <canvas id="pitch" class="pitch-canvas" width="1200" height="300" aria-label="Pitch detectado y pitch bend"></canvas>
+      </div>
+
+      <div>
+        <h3 style="font-size:1rem;margin:14px 0 8px">Notas segmentadas</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nota</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Velocity</th><th>Bend medio</th></tr></thead>
+            <tbody id="midiBody"><tr><td colspan="6" style="text-align:left;color:#666">Sin eventos.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -140,7 +181,8 @@ const $=id=>document.getElementById(id);
 const fileInput=$('fileInput'),recordBtn=$('recordBtn'),stopBtn=$('stopBtn'),status=$('status'),player=$('player');
 const canvas=$('wave'),ctx=canvas.getContext('2d'),zoom=$('zoom'),offset=$('offset');
 const timeline=$('timeline'),playPauseBtn=$('playPauseBtn'),pauseBtn=$('pauseBtn');
-let cursorTime=0;
+const selStart=$('selStart'),selEnd=$('selEnd');
+let cursorTime=0,selectionStart=0,selectionEnd=0,selectionStopTimer=null;
 let audioCtx=null,audioBuffer=null,mediaRecorder=null,chunks=[],stream=null,objectUrl=null;
 let midiFrames=[],midiNotes=[],scheduledNodes=[];
 function setStatus(t){status.textContent=t}
@@ -231,6 +273,18 @@ async function decodeBlob(blob,name='audio'){
     timeline.disabled=false;
     playPauseBtn.disabled=false;
     pauseBtn.disabled=false;
+    selStart.max=String(audioBuffer.duration);
+    selEnd.max=String(audioBuffer.duration);
+    selStart.disabled=false;selEnd.disabled=false;
+    selectionStart=0;
+    selectionEnd=Math.min(audioBuffer.duration,Math.max(.25,audioBuffer.duration*.25));
+    selStart.value=String(selectionStart);
+    selEnd.value=String(selectionEnd);
+    $('selStartVal').textContent=selectionStart.toFixed(3)+' s';
+    $('selEndVal').textContent=selectionEnd.toFixed(3)+' s';
+    $('markStartBtn').disabled=false;
+    $('markEndBtn').disabled=false;
+    $('playSelectionBtn').disabled=false;
     cursorTime=0;
     $('timelineVal').textContent='0.000 s';
     drawWave();
@@ -239,8 +293,9 @@ async function decodeBlob(blob,name='audio'){
     $('playMidiBtn').disabled=true;
     $('downloadMidiBtn').disabled=true;
     $('midiBody').innerHTML='<tr><td colspan="6" style="text-align:left;color:#666">Sin eventos.</td></tr>';
-    clearPitch();
-    $('midiStatus').textContent='Audio cargado. Tocá “Analizar → MIDI”.';
+    clearPitch();clearSelectedWave();
+    $('analysisResult').classList.remove('open');
+    $('midiStatus').textContent='Seleccioná un fragmento y tocá “Analizar → MIDI”.';
     setStatus('Listo: '+name);
   }catch(e){
     console.error(e);
@@ -262,6 +317,29 @@ function seekFromCanvas(c,e){
 }
 canvas.addEventListener('pointerdown',e=>seekFromCanvas(canvas,e));
 $('pitch').addEventListener('pointerdown',e=>seekFromCanvas($('pitch'),e));
+
+function updateSelectionFromInputs(changed){
+  if(!audioBuffer)return;
+  let a=Number(selStart.value)||0,b=Number(selEnd.value)||0;
+  if(changed==='start' && a>b){b=a;selEnd.value=String(b)}
+  if(changed==='end' && b<a){a=b;selStart.value=String(a)}
+  selectionStart=Math.max(0,Math.min(audioBuffer.duration,a));
+  selectionEnd=Math.max(selectionStart,Math.min(audioBuffer.duration,b));
+  $('selStartVal').textContent=selectionStart.toFixed(3)+' s';
+  $('selEndVal').textContent=selectionEnd.toFixed(3)+' s';
+  drawWave();drawPitch();
+}
+selStart.addEventListener('input',()=>updateSelectionFromInputs('start'));
+selEnd.addEventListener('input',()=>updateSelectionFromInputs('end'));
+$('markStartBtn').addEventListener('click',()=>{selStart.value=String(cursorTime);updateSelectionFromInputs('start')});
+$('markEndBtn').addEventListener('click',()=>{selEnd.value=String(cursorTime);updateSelectionFromInputs('end')});
+$('playSelectionBtn').addEventListener('click',async()=>{
+  if(!audioBuffer||selectionEnd<=selectionStart)return;
+  clearTimeout(selectionStopTimer);
+  player.currentTime=selectionStart;
+  await player.play();
+  selectionStopTimer=setTimeout(()=>{player.pause();player.currentTime=selectionEnd;setCursor(selectionEnd,false,false)},Math.max(0,(selectionEnd-selectionStart)*1000));
+});
 recordBtn.addEventListener('click',async()=>{
   if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder){
     setStatus('Este navegador no permite grabación directa. Podés cargar un archivo de audio.');
@@ -293,6 +371,29 @@ function clearPitch(){
   const c=$('pitch'),x=c.getContext('2d');
   x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,c.width,c.height);
   x.strokeStyle='#ddd';x.beginPath();x.moveTo(0,c.height-28);x.lineTo(c.width,c.height-28);x.stroke();
+}
+function clearSelectedWave(){
+  const c=$('selectedWave'),x=c.getContext('2d');
+  x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,c.width,c.height);
+  x.strokeStyle='#ddd';x.beginPath();x.moveTo(0,c.height/2);x.lineTo(c.width,c.height/2);x.stroke();
+}
+function drawSelectedWave(){
+  clearSelectedWave();
+  if(!audioBuffer)return;
+  const c=$('selectedWave'),x=c.getContext('2d'),data=audioBuffer.getChannelData(0),sr=audioBuffer.sampleRate;
+  const a0=Math.max(0,Math.floor(selectionStart*sr)),a1=Math.min(data.length,Math.ceil(selectionEnd*sr));
+  const w=c.width,h=c.height,mid=h/2,spp=Math.max(1,(a1-a0)/w);
+  x.strokeStyle='#111';x.beginPath();
+  for(let px=0;px<w;px++){
+    const a=Math.floor(a0+px*spp),b=Math.min(a1,Math.max(a+1,Math.floor(a+spp)));
+    let mn=1,mx=-1;
+    for(let i=a;i<b;i++){const v=data[i];if(v<mn)mn=v;if(v>mx)mx=v}
+    x.moveTo(px,mid-mx*(h*.42));x.lineTo(px,mid-mn*(h*.42));
+  }
+  x.stroke();
+  x.fillStyle='#555';x.font='13px system-ui';
+  x.fillText(selectionStart.toFixed(3)+' s',4,h-8);
+  x.fillText(selectionEnd.toFixed(3)+' s',w-70,h-8);
 }
 
 function noteName(n){
@@ -333,19 +434,21 @@ function estimatePitch(frame,sr){
   }
   return {freq:sr/lag,rms,corr:best};
 }
-function makeMonoDownsample(buffer,targetRate=12000,maxSeconds=30){
+function makeMonoDownsample(buffer,targetRate=12000,maxSeconds=30,startSec=0,endSec=null){
   const sr=buffer.sampleRate;
   const step=Math.max(1,Math.floor(sr/targetRate));
   const outRate=sr/step;
-  const maxIn=Math.min(buffer.length,Math.floor(maxSeconds*sr));
-  const len=Math.floor(maxIn/step);
+  const startIn=Math.max(0,Math.floor(startSec*sr));
+  const requestedEnd=endSec==null?buffer.length:Math.min(buffer.length,Math.floor(endSec*sr));
+  const maxIn=Math.min(requestedEnd,startIn+Math.floor(maxSeconds*sr));
+  const len=Math.max(0,Math.floor((maxIn-startIn)/step));
   const out=new Float32Array(len);
   for(let i=0;i<len;i++){
-    const src=i*step;let v=0;
+    const src=startIn+i*step;let v=0;
     for(let c=0;c<buffer.numberOfChannels;c++)v+=buffer.getChannelData(c)[src]||0;
     out[i]=v/buffer.numberOfChannels;
   }
-  return {data:out,sr:outRate};
+  return {data:out,sr:outRate,timeOffset:startIn/sr};
 }
 function smoothMidi(frames){
   const voiced=frames.map(f=>f.midiFloat);
@@ -415,7 +518,7 @@ function drawPitch(){
 function renderMidiTable(){
   const body=$('midiBody');
   if(!midiNotes.length){body.innerHTML='<tr><td colspan="6" style="text-align:left;color:#666">No se detectaron notas estables.</td></tr>';return}
-  body.innerHTML=midiNotes.map(n=>'<tr>'+
+  body.innerHTML=midiNotes.map((n,i)=>'<tr class="note-row" data-note-index="'+i+'">'+
     '<td><span class="note-pill">'+noteName(n.note)+' · '+n.note+'</span></td>'+
     '<td>'+n.start.toFixed(3)+' s</td>'+
     '<td>'+n.end.toFixed(3)+' s</td>'+
@@ -423,22 +526,32 @@ function renderMidiTable(){
     '<td>'+n.velocity+'</td>'+
     '<td>'+((n.bendMean>=0?'+':'')+n.bendMean.toFixed(1))+' ¢</td>'+
   '</tr>').join('');
+  body.querySelectorAll('.note-row').forEach(row=>row.addEventListener('click',()=>{
+    body.querySelectorAll('.note-row').forEach(r=>r.classList.remove('selected'));
+    row.classList.add('selected');
+    const n=midiNotes[Number(row.dataset.noteIndex)];
+    if(n){setCursor(n.start,true,true);selStart.value=String(n.start);selEnd.value=String(n.end);updateSelectionFromInputs('end');drawSelectedWave();}
+  }));
 }
 async function analyzeMidi(){
   if(!audioBuffer)return;
+  if(selectionEnd-selectionStart<.03){
+    $('midiStatus').textContent='Seleccioná un fragmento un poco más largo.';
+    return;
+  }
   const usePitch=$('anPitch').checked,useEvents=$('anEvents').checked,useVelocity=$('anVelocity').checked;
   if(!usePitch){
     $('midiStatus').textContent='Activá “Tono continuo / pitch bend” para iniciar el análisis.';
     return;
   }
   $('analyzeBtn').disabled=true;
-  $('midiStatus').textContent=useEvents?'Analizando tono y eventos…':'Analizando solo tono…';
+  $('midiStatus').textContent=useEvents?'Analizando el fragmento y segmentando notas…':'Analizando solo tono en el fragmento…';
   await new Promise(r=>setTimeout(r,20));
-  const {data,sr}=makeMonoDownsample(audioBuffer,12000,30);
+  const {data,sr,timeOffset}=makeMonoDownsample(audioBuffer,12000,30,selectionStart,selectionEnd);
   const frameSize=512,hop=128,hopSeconds=hop/sr;
   const frames=[];
   for(let start=0;start+frameSize<data.length;start+=hop){
-    const frame=data.subarray(start,start+frameSize),p=estimatePitch(frame,sr),time=(start+frameSize/2)/sr;
+    const frame=data.subarray(start,start+frameSize),p=estimatePitch(frame,sr),time=timeOffset+(start+frameSize/2)/sr;
     if(p.freq>0){
       const midiFloat=69+12*Math.log2(p.freq/440);
       if(midiFloat>=24&&midiFloat<=108)frames.push({time,freq:p.freq,rms:p.rms,corr:p.corr,midiFloat});
@@ -447,13 +560,14 @@ async function analyzeMidi(){
   }
   smoothMidi(frames);midiFrames=frames;
   midiNotes=useEvents?buildNotes(frames,hopSeconds,useVelocity):[];
-  drawPitch();renderMidiTable();
+  $('analysisResult').classList.add('open');
+  drawSelectedWave();drawPitch();renderMidiTable();
   if(!useEvents)$('midiBody').innerHTML='<tr><td colspan="6" style="text-align:left;color:#666">Modo “solo tono”: no se segmentan note-on / note-off.</td></tr>';
   $('playMidiBtn').disabled=!midiFrames.some(f=>Number.isFinite(f.midiFloat));
   $('downloadMidiBtn').disabled=!useEvents||!midiNotes.length;
   $('analyzeBtn').disabled=false;
-  const capped=audioBuffer.duration>30?' Se analizaron los primeros 30 s.':'';
-  $('midiStatus').textContent=useEvents?(midiNotes.length+' notas detectadas.'+capped):('Tono continuo detectado sin segmentación de notas.'+capped);
+  const limited=(selectionEnd-selectionStart)>30?' Se analizaron los primeros 30 s del fragmento.':'';
+  $('midiStatus').textContent=useEvents?(midiNotes.length+' notas detectadas en '+selectionStart.toFixed(3)+'–'+selectionEnd.toFixed(3)+' s.'+limited):('Tono continuo detectado en el fragmento seleccionado.'+limited);
 }
 function stopSynth(){
   for(const n of scheduledNodes){try{n.stop()}catch(e){}}
@@ -590,6 +704,7 @@ $('analyzeBtn').addEventListener('click',analyzeMidi);
 $('playMidiBtn').addEventListener('click',playMidi);
 $('downloadMidiBtn').addEventListener('click',downloadMidi);
 clearPitch();
+clearSelectedWave();
 clearCanvas();
 </script>
 </body>
