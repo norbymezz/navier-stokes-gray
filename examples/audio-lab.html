@@ -108,8 +108,12 @@ audio{width:100%;margin-top:10px}
       <select id="instrument">
         <option value="sine">Seno puro</option>
         <option value="flute">Flauta</option>
-        <option value="string">Cuerda</option>
+        <option value="oboe">Oboe</option>
+        <option value="trumpet">Trompeta</option>
         <option value="clarinet">Clarinete</option>
+        <option value="string">Cuerda</option>
+        <option value="piano">Piano</option>
+        <option value="marimba">Marimba (percusión afinada)</option>
       </select>
     </div>
     <button id="playMidiBtn" type="button" disabled>▶ Ejecutar MIDI</button>
@@ -461,12 +465,18 @@ function oscVoice(ac,dest,kind,freq,start,end,velocity,bends,mult=1,gainScale=1)
   let attack=.008,release=.04;
   if(kind==='sine'){osc.type='sine';filter.type='allpass'}
   if(kind==='flute'){osc.type=mult===1?'sine':'triangle';filter.type='lowpass';filter.frequency.value=7000;attack=.035;release=.08}
+  if(kind==='oboe'){osc.type='sawtooth';filter.type='bandpass';filter.frequency.value=1200;filter.Q.value=.75;attack=.028;release=.09}
+  if(kind==='trumpet'){osc.type='sawtooth';filter.type='lowpass';filter.frequency.value=4800;attack=.02;release=.08}
   if(kind==='string'){osc.type='sawtooth';filter.type='lowpass';filter.frequency.setValueAtTime(3500,start);filter.frequency.exponentialRampToValueAtTime(900,Math.min(end,start+.35));attack=.004;release=.12}
   if(kind==='clarinet'){osc.type='square';filter.type='lowpass';filter.frequency.value=2600;attack=.018;release=.07}
+  if(kind==='piano'){osc.type='triangle';filter.type='lowpass';filter.frequency.value=5200;attack=.003;release=.22}
+  if(kind==='marimba'){osc.type='sine';filter.type='bandpass';filter.frequency.value=Math.min(6000,freq*3);filter.Q.value=1.1;attack=.002;release=.18}
   const amp=Math.max(.005,(velocity/127)*.13*gainScale);
   g.gain.setValueAtTime(.0001,start);
   g.gain.linearRampToValueAtTime(amp,start+attack);
   if(kind==='string')g.gain.exponentialRampToValueAtTime(Math.max(.0002,amp*.42),Math.max(start+attack+.01,end-.08));
+  else if(kind==='piano')g.gain.exponentialRampToValueAtTime(Math.max(.00015,amp*.16),Math.min(end,start+.65));
+  else if(kind==='marimba')g.gain.exponentialRampToValueAtTime(Math.max(.00015,amp*.08),Math.min(end,start+.38));
   else g.gain.setValueAtTime(amp,Math.max(start+attack,end-release));
   g.gain.exponentialRampToValueAtTime(.0001,end+release);
   osc.frequency.setValueAtTime(freq*mult,start);
@@ -494,10 +504,17 @@ async function playPitchOnly(){
     osc.connect(filter);filter.connect(gain);gain.connect(ac.destination);
     if(kind==='sine')osc.type='sine';
     if(kind==='flute'){osc.type='sine';filter.type='lowpass';filter.frequency.value=7000}
+    if(kind==='oboe'){osc.type='sawtooth';filter.type='bandpass';filter.frequency.value=1200;filter.Q.value=.75}
+    if(kind==='trumpet'){osc.type='sawtooth';filter.type='lowpass';filter.frequency.value=4800}
     if(kind==='string'){osc.type='sawtooth';filter.type='lowpass';filter.frequency.value=1400}
     if(kind==='clarinet'){osc.type='square';filter.type='lowpass';filter.frequency.value=2600}
+    if(kind==='piano'){osc.type='triangle';filter.type='lowpass';filter.frequency.value=5200}
+    if(kind==='marimba'){osc.type='sine';filter.type='bandpass';filter.frequency.value=Math.min(6000,run[0].freq*3);filter.Q.value=1.1}
     gain.gain.setValueAtTime(.0001,start);gain.gain.linearRampToValueAtTime(.11,start+.02);
-    gain.gain.setValueAtTime(.11,Math.max(start+.02,end-.04));gain.gain.exponentialRampToValueAtTime(.0001,end+.04);
+    if(kind==='piano')gain.gain.exponentialRampToValueAtTime(.016,Math.min(end,start+.65));
+    else if(kind==='marimba')gain.gain.exponentialRampToValueAtTime(.009,Math.min(end,start+.38));
+    else gain.gain.setValueAtTime(.11,Math.max(start+.02,end-.04));
+    gain.gain.exponentialRampToValueAtTime(.0001,end+.04);
     osc.frequency.setValueAtTime(run[0].freq,start);
     for(const f of run)osc.frequency.linearRampToValueAtTime(f.freq,base+f.time);
     osc.start(start);osc.stop(end+.05);scheduledNodes.push(osc);
@@ -514,6 +531,15 @@ async function playMidi(){
     if(kind==='flute'){
       oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,1,1);
       oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,2,.16);
+    }else if(kind==='oboe'){
+      oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,1,1);
+      oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,2,.09);
+    }else if(kind==='piano'){
+      oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,1,1);
+      oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,2,.12);
+    }else if(kind==='marimba'){
+      oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,1,1);
+      oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,3,.10);
     }else oscVoice(ac,dest,kind,freq,start,end,n.velocity,n.bends,1,1);
   }
 }
@@ -526,7 +552,7 @@ function varLen(v){
 function push32(a,v){a.push((v>>>24)&255,(v>>>16)&255,(v>>>8)&255,v&255)}
 function buildMidiFile(){
   const ppq=480,ticksPerSec=960,events=[];
-  const programMap={sine:0,flute:73,string:48,clarinet:71};
+  const programMap={sine:0,flute:73,oboe:68,trumpet:56,clarinet:71,string:48,piano:0,marimba:12};
   events.push({t:0,b:[0xFF,0x51,0x03,0x07,0xA1,0x20]});
   events.push({t:0,b:[0xC0,programMap[$('instrument').value]||0]});
   events.push({t:0,b:[0xB0,101,0,0xB0,100,0,0xB0,6,2,0xB0,38,0]});
